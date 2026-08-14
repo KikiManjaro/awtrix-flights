@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<!--
+  awtrix-flights — Unraid Community Apps template
+  ==============================================
+  Affiche en live sur un AWTRIX 3 les avions qui survolent votre maison.
+  Documentation : https://github.com/KikiManjaro/awtrix-flights
+
+  Installation depuis l'UI Unraid :
+    1. Apps -> Settings (onglet) -> Template Repositories
+    2. Ajouter : https://github.com/KikiManjaro/awtrix-flights
+    3. Apps -> chercher "awtrix-flights" -> Install
+
+  L'image est publiée sur GitHub Container Registry (ghcr.io), multi-arch
+  (amd64 + arm64). Aucun port n'est exposé : le service sort vers OpenSky
+  (https) et rejoint les AWTRIX sur le réseau local.
+-->
+<Container version="2">
+  <Name>awtrix-flights</Name>
+  <Repository>ghcr.io/kikimanjaro/awtrix-flights:latest</Repository>
+  <Registry>https://github.com/users/KikiManjaro/packages/container/package/awtrix-flights</Registry>
+  <Support>https://github.com/KikiManjaro/awtrix-flights</Support>
+  <Project>https://github.com/KikiManjaro/awtrix-flights</Project>
+  <Overview>Displays live aircraft overflying your home on an AWTRIX 3 LED display (OpenSky Network / ADS-B). Each detected aircraft is shown with callsign, airline, country, altitude, speed and a heading-oriented icon. Zero pip dependencies, MQTT publishing, anti-spam, multi-display support.</Overview>
+  <Category>Utilities:Other</Category>
+  <WebUI/>
+  <Icon>https://raw.githubusercontent.com/KikiManjaro/awtrix-flights/main/template/awtrix-flights.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/KikiManjaro/awtrix-flights/main/template/awtrix-flights.xml</TemplateURL>
+  <ExtraParams>--restart unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="HOME_LAT" Target="HOME_LAT" Default="" Mode="" Description="Latitude of your home in decimal degrees (required). Google Maps -> right-click your home -> What's here?" Type="Variable" Display="always" Required="true" Mask="false">47.8649</Config>
+  <Config Name="HOME_LON" Target="HOME_LON" Default="" Mode="" Description="Longitude of your home in decimal degrees (required)." Type="Variable" Display="always" Required="true" Mask="false">2.1243</Config>
+  <Config Name="RADIUS_KM" Target="RADIUS_KM" Default="5" Mode="" Description="Detection radius around home in km." Type="Variable" Display="advanced" Required="false" Mask="false">5</Config>
+  <Config Name="MIN_ALT_M" Target="MIN_ALT_M" Default="300" Mode="" Description="Minimum aircraft altitude in meters." Type="Variable" Display="advanced" Required="false" Mask="false">300</Config>
+  <Config Name="AWTRIX_HOST" Target="AWTRIX_HOST" Default="192.168.1.27" Mode="" Description="AWTRIX unit(s), comma-separated for multiple displays (e.g. 192.168.1.27,192.168.1.123)." Type="Variable" Display="always" Required="true" Mask="false">192.168.1.27</Config>
+  <Config Name="AWTRIX_PORT" Target="AWTRIX_PORT" Default="80" Mode="" Description="AWTRIX API HTTP port (80 on firmware 0.98; 7001 is silent)." Type="Variable" Display="advanced" Required="false" Mask="false">80</Config>
+  <Config Name="MESSAGE_TEMPLATE" Target="MESSAGE_TEMPLATE" Default="{callsign} {country} {altitude_m}m {speed_kmh}km/h" Mode="" Description="Display template. Placeholders: {callsign} {country} {airline} {category} {altitude_m} {altitude_ft} {speed_ms} {speed_kmh} {distance_km} {track} {direction}. Example: {callsign} {airline} {direction} {altitude_ft}ft" Type="Variable" Display="advanced" Required="false" Mask="false">{callsign} {country} {altitude_m}m {speed_kmh}km/h</Config>
+  <Config Name="ICON_ENABLED" Target="ICON_ENABLED" Default="true" Mode="" Description="Heading-oriented plane icon (true/false)." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="ICON_COLOR" Target="ICON_COLOR" Default="255,170,0" Mode="" Description="Icon RGB color (R,G,B)." Type="Variable" Display="advanced" Required="false" Mask="false">255,170,0</Config>
+  <Config Name="AWTRIX_BEARING" Target="AWTRIX_BEARING" Default="0" Mode="" Description="Screen orientation in degrees: angle between the top of the display and geographic north, clockwise (0=N, 90=E, 180=S, 270=W)." Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
+  <Config Name="POLL_INTERVAL_SEC" Target="POLL_INTERVAL_SEC" Default="15" Mode="" Description="OpenSky polling interval in seconds." Type="Variable" Display="advanced" Required="false" Mask="false">15</Config>
+  <Config Name="NOTIFY_COOLDOWN_SEC" Target="NOTIFY_COOLDOWN_SEC" Default="60" Mode="" Description="Anti-spam: minimum delay between displays of the same aircraft (seconds)." Type="Variable" Display="advanced" Required="false" Mask="false">60</Config>
+  <Config Name="MQTT_ENABLED" Target="MQTT_ENABLED" Default="false" Mode="" Description="Enable MQTT publishing of detections (true/false)." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="MQTT_HOST" Target="MQTT_HOST" Default="127.0.0.1" Mode="" Description="MQTT broker address (e.g. Home Assistant IP)." Type="Variable" Display="advanced" Required="false" Mask="false">127.0.0.1</Config>
+  <Config Name="MQTT_PORT" Target="MQTT_PORT" Default="1883" Mode="" Description="MQTT broker port." Type="Variable" Display="advanced" Required="false" Mask="false">1883</Config>
+  <Config Name="MQTT_USER" Target="MQTT_USER" Default="" Mode="" Description="MQTT username (optional)." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="MQTT_PASSWORD" Target="MQTT_PASSWORD" Default="" Mode="" Description="MQTT password (optional)." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="MQTT_TOPIC_PREFIX" Target="MQTT_TOPIC_PREFIX" Default="awtrix-flights" Mode="" Description="MQTT topic prefix (topics: &lt;prefix&gt;/detection, &lt;prefix&gt;/status)." Type="Variable" Display="advanced" Required="false" Mask="false">awtrix-flights</Config>
+  <Config Name="TZ" Target="TZ" Default="Europe/Paris" Mode="" Description="Timezone for logs." Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Paris</Config>
+</Container>

@@ -1,8 +1,8 @@
 # awtrix-flights ✈️
 
-> **Affiche en live sur un écran [AWTRIX 3](https://blueforcer.github.io/awtrix3/) les avions qui survolent votre maison.**
+> **Display live aircraft overflying your home on an [AWTRIX 3](https://blueforcer.github.io/awtrix3/) LED display.**
 
-Chaque avion détecté dans le rayon configuré est affiché avec son callsign, sa compagnie, son pays, son altitude et sa vitesse — avec une **icône avion orientée selon son cap**. Les données viennent de l'[API publique OpenSky Network](https://opensky-network.org/) (réseau ADS-B).
+Every aircraft detected within the configured radius is shown with its callsign, airline, country, altitude and speed — plus a **plane icon rotated to match its true heading**. Data comes from the public [OpenSky Network API](https://opensky-network.org/) (ADS-B).
 
 ![CI](https://github.com/KikiManjaro/awtrix-flights/actions/workflows/ci.yml/badge.svg)
 ![Docker](https://github.com/KikiManjaro/awtrix-flights/actions/workflows/docker-publish.yml/badge.svg)
@@ -11,32 +11,32 @@ Chaque avion détecté dans le rayon configuré est affiché avec son callsign, 
 
 ---
 
-## ✨ Fonctionnalités
+## ✨ Features
 
-- **Détection temps réel** : interroge OpenSky Network toutes les `POLL_INTERVAL_SEC` secondes
-- **Filtrage géographique** : rayon configurable autour de votre maison (Haversine) + altitude minimale
-- **Affichage personnalisable** : gabarit de message libre (`MESSAGE_TEMPLATE`) avec placeholders
-- **Icône avion orientée** : le sprite 8×8 tourne selon le cap de l'avion (prise en compte de l'orientation de votre écran via `AWTRIX_BEARING`)
-- **Nom de compagnie** : résolution du préfixe ICAO du callsign (ex. `AFR123` → Air France), table personnalisable
-- **Catégorie d'avion** : libellé OpenSky (gros porteur, hélicoptère, drone...)
-- **MQTT** : publie les détections sur votre broker (Mosquitto, EMQX...) pour intégration domotique
-- **Anti-spam** : chaque avion n'est affiché qu'une fois par fenêtre de cooldown (60 s par défaut)
-- **Multi-écrans** : publie sur plusieurs AWTRIX simultanément (séparés par des virgules)
-- **Zéro dépendance** : uniquement la bibliothèque standard Python (pas de pip install)
-- **Robuste** : backoff sur 429/erreurs réseau, ne plante jamais sur un pic réseau
-- **Léger** : image Docker ~50 Mo, exécution non-root, redémarrage automatique
+- **Real-time detection**: polls OpenSky Network every `POLL_INTERVAL_SEC` seconds
+- **Geographic filtering**: configurable radius around your home (Haversine) + minimum altitude
+- **Customizable display**: free-form message template (`MESSAGE_TEMPLATE`) with placeholders
+- **Heading-oriented icon**: the 8×8 plane sprite rotates with the aircraft's true track (screen orientation handled via `AWTRIX_BEARING`)
+- **Airline name**: ICAO callsign prefix resolution (e.g. `AFR123` → Air France), customizable table
+- **Aircraft category**: OpenSky label (heavy, helicopter, drone...)
+- **MQTT**: publishes detections to your broker (Mosquitto, EMQX...) for home-automation integration
+- **Anti-spam**: each aircraft is shown at most once per cooldown window (60 s default)
+- **Multi-display**: publishes to several AWTRIX units at once (comma-separated hosts)
+- **Zero dependencies**: Python standard library only (no pip install)
+- **Resilient**: backoff on 429/network errors, never crashes on a network spike
+- **Lightweight**: ~50 MB Docker image, non-root, auto-restart
 
-## 📦 Installation rapide (Docker)
+## 📦 Quick start (Docker)
 
 ```bash
 git clone https://github.com/KikiManjaro/awtrix-flights.git
 cd awtrix-flights
 cp .env.example .env
-# Éditer .env : HOME_LAT, HOME_LON (obligatoires), AWTRIX_HOST, etc.
+# Edit .env: HOME_LAT, HOME_LON (required), AWTRIX_HOST, etc.
 docker compose up -d
 ```
 
-Ou avec l'image pré-construite :
+Or with the pre-built image:
 
 ```bash
 docker run -d \
@@ -46,226 +46,237 @@ docker run -d \
   ghcr.io/kikimanjaro/awtrix-flights:latest
 ```
 
-## ⚙️ Configuration (variables d'environnement)
+## ⚙️ Configuration (environment variables)
 
-### Détection
+### Detection
 
-| Variable | Rôle | Défaut |
+| Variable | Role | Default |
 |---|---|---|
-| `HOME_LAT` / `HOME_LON` | Coordonnées de la maison (degrés décimaux) | **obligatoire** |
-| `RADIUS_KM` | Rayon de détection autour de la maison | `5` |
-| `MIN_ALT_M` | Altitude minimale des avions pris en compte | `300` |
-| `POLL_INTERVAL_SEC` | Période d'interrogation d'OpenSky | `15` |
-| `NOTIFY_COOLDOWN_SEC` | Anti-spam : délai min. entre 2 affichages du même avion | `60` |
+| `HOME_LAT` / `HOME_LON` | Home coordinates (decimal degrees) | **required** |
+| `RADIUS_KM` | Detection radius around home | `5` |
+| `MIN_ALT_M` | Minimum aircraft altitude | `300` |
+| `POLL_INTERVAL_SEC` | OpenSky polling interval | `15` |
+| `NOTIFY_COOLDOWN_SEC` | Anti-spam: min. delay between displays of the same aircraft | `60` |
 
 ### AWTRIX
 
-| Variable | Rôle | Défaut |
+| Variable | Role | Default |
 |---|---|---|
-| `AWTRIX_HOST` | Écran(s) AWTRIX, séparés par des virgules | `192.168.1.27` |
-| `AWTRIX_PORT` | Port HTTP de l'API AWTRIX (⚠️ 7001 muet sur firmware 0.98) | `80` |
-| `MESSAGE_TEMPLATE` | Gabarit du message affiché (placeholders ci-dessous) | `{callsign} {country} {altitude_m}m {speed_kmh}km/h` |
-| `ICON_ENABLED` | Icône avion orientée (`true`/`false`) | `true` |
-| `ICON_COLOR` | Couleur RGB de l'icône (`255,170,0`) | `255,170,0` |
-| `AWTRIX_BEARING` | Orientation de l'écran en degrés (voir ci-dessous) | `0` |
-| `AIRLINES_FILE` | Fichier JSON de compagnies personnalisées | — |
+| `AWTRIX_HOST` | AWTRIX unit(s), comma-separated | `192.168.1.27` |
+| `AWTRIX_PORT` | AWTRIX API HTTP port (⚠️ 7001 is silent on firmware 0.98) | `80` |
+| `MESSAGE_TEMPLATE` | Displayed message template (placeholders below) | `{callsign} {country} {altitude_m}m {speed_kmh}km/h` |
+| `ICON_ENABLED` | Heading-oriented plane icon (`true`/`false`) | `true` |
+| `ICON_COLOR` | Icon RGB color (`255,170,0`) | `255,170,0` |
+| `AWTRIX_BEARING` | Screen orientation in degrees (see below) | `0` |
+| `AIRLINES_FILE` | Custom airlines JSON file | — |
 
-### Placeholders du gabarit (`MESSAGE_TEMPLATE`)
+### Template placeholders (`MESSAGE_TEMPLATE`)
 
-| Placeholder | Valeur | Exemple |
+| Placeholder | Value | Example |
 |---|---|---|
-| `{callsign}` | Indicatif de l'avion | `AFR123` |
-| `{country}` | Pays d'origine | `France` |
-| `{airline}` | Compagnie (préfixe ICAO résolu) | `Air France` |
-| `{category}` | Catégorie OpenSky | `Gros porteur` |
-| `{altitude_m}` | Altitude en mètres | `10500` |
-| `{altitude_ft}` | Altitude en pieds | `34449` |
-| `{speed_ms}` | Vitesse en m/s | `235` |
-| `{speed_kmh}` | Vitesse en km/h | `846` |
-| `{distance_km}` | Distance horizontale | `1.2` |
-| `{track}` | Cap en degrés | `273` |
-| `{direction}` | Direction cardinale | `W` |
+| `{callsign}` | Aircraft callsign | `AFR123` |
+| `{country}` | Country of registration | `France` |
+| `{airline}` | Airline (ICAO prefix resolved) | `Air France` |
+| `{category}` | OpenSky category | `Heavy` |
+| `{altitude_m}` | Altitude in meters | `10500` |
+| `{altitude_ft}` | Altitude in feet | `34449` |
+| `{speed_ms}` | Speed in m/s | `235` |
+| `{speed_kmh}` | Speed in km/h | `846` |
+| `{distance_km}` | Horizontal distance | `1.2` |
+| `{track}` | Heading in degrees | `273` |
+| `{direction}` | Cardinal direction | `W` |
 
-Exemples de gabarits :
+Example templates:
 
 ```bash
-# Avec compagnie et direction
+# With airline and direction
 MESSAGE_TEMPLATE={callsign} {airline} {direction} {altitude_ft}ft
 # -> AFR123 Air France W 34449ft
 
-# Minimaliste
-MESSAGE_TEMPLATE={callsign} {altitude_km}m
+# Minimal
+MESSAGE_TEMPLATE={callsign} {altitude_m}m
 ```
 
-### 🧭 Orientation de l'écran (`AWTRIX_BEARING`)
+### 🧭 Screen orientation (`AWTRIX_BEARING`)
 
-L'icône avion est tournée pour pointer dans la **direction réelle** du vol. Pour que ce soit exact, il faut indiquer comment votre écran est posé — l'angle entre le **haut de l'écran** et le **nord géographique**, dans le sens horaire :
+The plane icon is rotated to point in the aircraft's **real direction**. For this to be accurate, tell the app how your display is placed — the angle between the **top of the screen** and **geographic north**, clockwise:
 
-| Écran | Valeur |
+| Display position | Value |
 |---|---|
-| Haut de l'écran vers le nord | `0` |
-| Haut de l'écran vers l'est | `90` |
-| Haut de l'écran vers le sud | `180` |
-| Haut de l'écran vers l'ouest | `270` |
+| Top of screen facing north | `0` |
+| Top of screen facing east | `90` |
+| Top of screen facing south | `180` |
+| Top of screen facing west | `270` |
 
-> 💡 Un AWTRIX posé à plat sur une table avec son port USB vers le nord = `AWTRIX_BEARING=0`. Un écran mural (interface orientée vers vous) : le haut de l'écran est généralement vers le nord si vous êtes face au nord, etc.
+> 💡 A flat-mounted AWTRIX with its USB port pointing north = `AWTRIX_BEARING=0`. A wall-mounted display (UI facing you): the top of the screen points north when you face north, etc.
 
 ### MQTT
 
-| Variable | Rôle | Défaut |
+| Variable | Role | Default |
 |---|---|---|
-| `MQTT_ENABLED` | Active la publication MQTT (`true`/`false`) | `false` |
-| `MQTT_HOST` | Adresse du broker | `127.0.0.1` |
-| `MQTT_PORT` | Port du broker | `1883` |
-| `MQTT_USER` / `MQTT_PASSWORD` | Authentification (optionnel) | — |
-| `MQTT_TOPIC_PREFIX` | Préfixe des topics | `awtrix-flights` |
+| `MQTT_ENABLED` | Enable MQTT publishing (`true`/`false`) | `false` |
+| `MQTT_HOST` | Broker address | `127.0.0.1` |
+| `MQTT_PORT` | Broker port | `1883` |
+| `MQTT_USER` / `MQTT_PASSWORD` | Authentication (optional) | — |
+| `MQTT_TOPIC_PREFIX` | Topic prefix | `awtrix-flights` |
 
-Topics publiés :
+Published topics:
 
 | Topic | Payload |
 |---|---|
 | `<prefix>/detection` | `{"callsign": "AFR123", "country": "France", "altitude_m": 10500, ..., "speed_kmh": 846, "notified_at": 1786700000}` |
 | `<prefix>/status` | `{"state": "online", "started_at": ...}` / `{"state": "offline", ...}` |
 
-Exemple d'abonnement : `mosquitto_sub -h 192.168.1.100 -t 'awtrix-flights/#'`
+Subscribe example: `mosquitto_sub -h 192.168.1.100 -t 'awtrix-flights/#'`
 
-### Compagnies personnalisées (`AIRLINES_FILE`)
+### Custom airlines (`AIRLINES_FILE`)
 
-Le mapping préfixe → compagnie est intégré (les principales compagnies européennes). Pour l'étendre :
+The prefix → airline mapping is built in (major European carriers). To extend it:
 
 ```json
-{"MYC": "Ma Compagnie", "AFR": "Air France (surchargé)"}
+{"MYC": "My Airline", "AFR": "Air France (overridden)"}
 ```
 
-Les entrées du fichier **surchargent** la table intégrée.
+Entries from the file **override** the built-in table.
 
-**Trouver ses coordonnées** : Google Maps → clic droit sur votre maison → « Qu'y a-t-il ici ? ».
+**Find your coordinates**: Google Maps → right-click your home → "What's here?".
 
-## 🔧 Sans Docker (Python direct)
+## 🖼️ What it looks like
+
+The message is rendered on a 32×8 LED matrix. With the default template and the heading icon, a detection looks like this (the plane sprite points west, matching `track=273`):
+
+```
+⬤═══════════════════════════════════
+ AFR123 France 10500m 846km/h
+```
+
+With a custom template (`{callsign} {airline} {direction} {altitude_ft}ft`):
+
+```
+⬤ AFR123 Air France W 34449ft
+```
+
+The text scrolls when it exceeds the matrix width. The icon color matches `ICON_COLOR`, and its rotation updates every time the aircraft's track changes.
+
+## 🖥️ Unraid (Community Apps)
+
+A ready-made template is included in the repo (`template/awtrix-flights.xml`) — no command line needed.
+
+**Installation:**
+1. Unraid → **Apps** → *Settings* tab → **Template Repositories**
+2. Add: `https://github.com/KikiManjaro/awtrix-flights`
+3. Go back to **Apps** → search `awtrix-flights` → **Install**
+4. Fill in `HOME_LAT`, `HOME_LON`, `AWTRIX_HOST` (comma-separated for multiple displays) → **Apply**
+
+The template exposes every setting from the configuration tables above (template, icon color, bearing, MQTT...). The image is pulled from GHCR (`ghcr.io/kikimanjaro/awtrix-flights:latest`, multi-arch amd64/arm64) and restarts automatically (`--restart unless-stopped`).
+
+> ⚠️ **Note for public use**: for the Community Apps template to be installable by everyone, the repository (and thus the GHCR package) must be **public**. While the repo is private, you can still install the template manually on your own Unraid (the template repository feature works with private repos for your account).
+
+**Manual alternative** (without Community Apps): from a clone of the repo, run `bash install-unraid.sh` — it copies the project to `/mnt/user/appdata/awtrix-flights`, generates the `.env` and starts the container (auto-restart).
+
+## 🔧 Without Docker (plain Python)
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate   # optionnel, aucune dépendance
+python3 -m venv .venv && source .venv/bin/activate   # optional, no dependencies
 export HOME_LAT=47.8649 HOME_LON=2.1243
 export AWTRIX_HOST=192.168.1.27,192.168.1.123
 python3 main.py
 ```
 
-## 🧪 Développement
+## 🧪 Development
 
 ```bash
-python3 -m unittest discover -s tests -v     # ou : pytest
+python3 -m unittest discover -s tests -v     # or: pytest
 pytest --cov=. --cov-report=term-missing     # tests + coverage
 ruff check .                                 # lint
 ruff format --check .                        # format
 ```
 
-Le projet est volontairement **stdlib-only** : aucun fichier `requirements.txt` nécessaire pour l'exécution. `pytest`, `pytest-cov` et `ruff` ne sont utilisés que pour la CI (`pip install -e ".[dev]"`).
+The project is deliberately **stdlib-only**: no `requirements.txt` needed at runtime. `pytest`, `pytest-cov` and `ruff` are CI-only tools (`pip install -e ".[dev]"`).
 
 ## 🚀 CI / CD
 
-Le pipeline GitHub Actions (`.github/workflows/`) :
+GitHub Actions pipeline (`.github/workflows/`):
 
-| Workflow | Déclencheur | Action |
+| Workflow | Trigger | Action |
 |---|---|---|
-| `ci.yml` | push/PR sur `main` | tests Python (3.10 → 3.13) + coverage ≥ 80 %, lint ruff, smoke-test du build Docker |
-| `docker-publish.yml` | push sur `main` ou tag `v*` | build multi-arch (amd64/arm64) + publication sur GHCR |
-| `release.yml` | tag `v*` | GitHub Release avec changelog automatique |
+| `ci.yml` | push/PR on `main` | Python tests (3.10 → 3.13) + coverage ≥ 80 %, ruff lint, Docker build smoke test |
+| `docker-publish.yml` | push on `main` or tag `v*` | multi-arch build (amd64/arm64) + publish to GHCR |
+| `release.yml` | tag `v*` | GitHub Release with automatic changelog |
 
-**Dependabot** surveille les actions GitHub et les outils de CI (PR de mise à jour automatiques chaque semaine).
+**Dependabot** watches GitHub Actions and CI tools (weekly update PRs).
 
-### Créer une release
+### Cutting a release
 
 ```bash
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-→ GitHub Release créée, image `ghcr.io/kikimanjaro/awtrix-flights:v0.2.0` publiée.
+→ GitHub Release created, image `ghcr.io/kikimanjaro/awtrix-flights:v0.2.0` published.
 
-Tags d'image publiés sur `ghcr.io/kikimanjaro/awtrix-flights` :
-- `latest` (branche main)
-- `<branche>` / `<sha>` (chaque push)
-- `vX.Y.Z` (tags versionnés, pour des releases stables)
+Image tags on `ghcr.io/kikimanjaro/awtrix-flights`:
+- `latest` (main branch)
+- `<branch>` / `<sha>` (every push)
+- `vX.Y.Z` (versioned tags, for stable releases)
 
-## 📁 Structure du projet
+## 📁 Project structure
 
 ```
 awtrix-flights/
-├── main.py            # boucle principale (poll, cooldown, signaux, MQTT)
-├── flights.py         # client OpenSky Network (bbox, filtrage, retry, catégories)
-├── airlines.py        # résolution compagnie depuis le préfixe callsign
-├── awtrix_client.py   # client API AWTRIX (template, icône orientée, multi-écrans)
-├── mqtt_client.py     # client MQTT publish-only (stdlib, zéro dépendance)
-├── scripts/
-│   └── awtrix_capture.py  # capture l'écran AWTRIX en GIF animé (outil dev)
-├── tests/             # 111 tests unitaires (unittest, réseau 100% mocké)
-├── Dockerfile         # image ~50 Mo, non-root
-├── docker-compose.yml # déploiement en une commande
-└── .github/workflows/ # CI + publication GHCR + releases
+├── main.py            # main loop (poll, cooldown, signals, MQTT)
+├── flights.py         # OpenSky Network client (bbox, filtering, retry, categories)
+├── airlines.py        # airline resolution from callsign prefix
+├── awtrix_client.py   # AWTRIX API client (template, oriented icon, multi-display)
+├── mqtt_client.py     # publish-only MQTT client (stdlib, zero dependency)
+├── tests/             # 111 unit tests (unittest, network 100% mocked)
+├── Dockerfile         # ~50 MB image, non-root
+├── docker-compose.yml # one-command deployment
+└── .github/workflows/ # CI + GHCR publishing + releases
 ```
 
-## 🛰️ Comment ça marche (API utilisée)
+## 🛰️ How it works (API used)
 
-Le projet interroge l'**API publique OpenSky Network** (`https://opensky-network.org/api/states/all`) — un agrégateur mondial du réseau **ADS-B** (le même système que les récepteurs qui équipent les avions : ils diffusent leur position, altitude, vitesse et cap par radio, et des milliers de récepteurs terrestres collectent ces données pour OpenSky).
+The project queries the **public OpenSky Network API** (`https://opensky-network.org/api/states/all`) — a worldwide aggregator of the **ADS-B** network (aircraft broadcast their position, altitude, speed and heading by radio; thousands of ground receivers feed OpenSky).
 
-### Endpoint utilisé
+### Endpoint
 
 ```
 GET https://opensky-network.org/api/states/all?lamin=47.81&lomin=2.07&lamax=47.92&lomax=2.18
 ```
 
-Les 4 paramètres `lamin/lomin/lamax/lomax` délimitent une **boîte géographique** autour de la maison (calculée par `flights.bounding_box()` avec 20 % de marge). La réponse contient un tableau `states` : **une ligne par avion** avec 18 champs, dont ceux utilisés ici :
+The `lamin/lomin/lamax/lomax` parameters define a **geographic bounding box** around the home (computed by `flights.bounding_box()` with a 20 % margin). The response contains a `states` array: **one row per aircraft** with 18 fields, including the ones used here:
 
-| Index | Champ OpenSky | Utilisation |
+| Index | OpenSky field | Usage |
 |---|---|---|
-| 1 | `callsign` | Indicatif (ex. `AFR123`) → compagnie via `airlines.py` |
-| 2 | `origin_country` | Pays d'immatriculation |
-| 5/6 | `longitude` / `latitude` | Position → distance Haversine depuis la maison |
-| 7 | `baro_altitude` | Altitude (repli sur `geo_altitude` index 13) |
-| 8 | `on_ground` | Filtré (on ignore les avions au sol) |
-| 9 | `velocity` | Vitesse m/s → convertie en km/h |
-| 10 | `true_track` | **Cap en degrés → orientation de l'icône** |
-| 17 | `category` | Type d'avion (gros porteur, hélico, drone…) |
+| 1 | `callsign` | Callsign (e.g. `AFR123`) → airline via `airlines.py` |
+| 2 | `origin_country` | Country of registration |
+| 5/6 | `longitude` / `latitude` | Position → Haversine distance from home |
+| 7 | `baro_altitude` | Altitude (falls back to `geo_altitude` index 13) |
+| 8 | `on_ground` | Filtered out (aircraft on the ground are ignored) |
+| 9 | `velocity` | Speed m/s → converted to km/h |
+| 10 | `true_track` | **Heading in degrees → icon orientation** |
+| 17 | `category` | Aircraft type (heavy, helicopter, drone...) |
 
-Le service **ne remonte jamais d'état intermédiaire** : chaque cycle interroge la zone, filtre (position valide, hors sol, altitude ≥ `MIN_ALT_M`, distance ≤ `RADIUS_KM`), trie par distance, puis affiche les nouveaux avions (anti-spam par callsign).
+The service never reports intermediate state: each cycle polls the zone, filters (valid position, not on ground, altitude ≥ `MIN_ALT_M`, distance ≤ `RADIUS_KM`), sorts by distance, then displays new aircraft (per-callsign anti-spam).
 
-> ℹ️ **Limites** : l'API publique est gratuite sans compte (≈ 4 requêtes/min par IP en pratique) et l'historique est limité. Le backoff intégré gère les réponses `429` proprement. Pour des données plus riches, OpenSky propose des comptes gratuits avec authentification — non requis ici.
+> ℹ️ **Limits**: the public API is free without an account (≈ 4 requests/min per IP in practice) with limited history. Built-in backoff handles `429` responses cleanly. For richer data, OpenSky offers free authenticated accounts — not required here.
 
-## 🎨 Icônes : faut-il télécharger quoi que ce soit sur l'AWTRIX ?
+## 🎨 Icons: anything to download on the AWTRIX?
 
-**Non, rien à télécharger.** 🎉
+**No, nothing to download.** 🎉
 
-L'icône avion n'utilise **pas** le système d'icônes LaMetric de l'AWTRIX (celui qui exige de télécharger chaque icône via l'onglet *Icon* de l'interface web). À la place, `awtrix_client.py` **dessine le sprite pixel par pixel** via l'instruction `draw` de l'API AWTRIX :
+The plane icon does **not** use the AWTRIX LaMetric icon system (the one that requires downloading each icon through the web UI *Icon* tab). Instead, `awtrix_client.py` **draws the sprite pixel by pixel** via the AWTRIX `draw` API instruction:
 
 ```json
 {"draw": [{"db": [x, y, 1, 1, [255, 170, 0]]}, ...]}
 ```
 
-Chaque pixel allumé du sprite 8×8 est envoyé individuellement avec sa couleur (`ICON_COLOR`), ce qui permet :
-- l'**orientation dynamique** (le sprite est tourné en Python selon `track − AWTRIX_BEARING`, impossible avec une icône fixe téléchargée),
-- zéro manipulation sur l'écran : le premier `notify_aircraft()` fait tout.
+Each lit pixel of the 8×8 sprite is sent individually with its color (`ICON_COLOR`), which enables:
+- **dynamic orientation** (the sprite is rotated in Python by `track − AWTRIX_BEARING`, impossible with a fixed downloaded icon),
+- zero interaction with the display: the first `notify_aircraft()` does everything.
 
-Seules les autres apps du repo (météo, énergie…) utilisent des icônes LaMetric téléchargées — c'est indépendant de ce projet.
+Only other apps (weather, energy...) use downloaded LaMetric icons — that's independent from this project.
 
-## 📸 Capturer l'écran AWTRIX (image / GIF animé)
+## 📜 License
 
-Le firmware AWTRIX 3 (0.98) n'a **pas d'endpoint de capture native**, mais il expose `GET /api/screen` qui renvoie le rendu LED brut : 256 entiers (32×8) avec les vraies couleurs RGB888. L'outil `scripts/awtrix_capture.py` interroge cet endpoint en boucle et assemble un **GIF animé** :
-
-```bash
-pip install pillow   # dépendance outil uniquement (pas le runtime)
-python3 scripts/awtrix_capture.py --host 192.168.1.27 --seconds 15 --fps 2 --scale 12 --out awtrix-live.gif
-```
-
-| Option | Rôle | Défaut |
-|---|---|---|
-| `--host` | IP de l'AWTRIX | `192.168.1.27` |
-| `--port` | Port API | `80` |
-| `--seconds` | Durée de capture | `15` |
-| `--fps` | Images par seconde | `2` |
-| `--scale` | Agrandissement (32×8 → 320×80) | `10` |
-| `--out` | Fichier de sortie | `awtrix.gif` |
-
-Résultat : un GIF 320×80 (par défaut) montrant la boucle d'apps en mouvement — idéal pour documenter un affichage, déboguer le rendu, ou montrer le résultat sur un README/forum.
-
-## 📜 Licence
-
-Projet sous licence [MIT](LICENSE). Données de vol fournies par [OpenSky Network](https://opensky-network.org/) (données ouvertes). Préfixes de compagnies basés sur les codes OACI/ICAO publics.
+MIT licensed ([LICENSE](LICENSE)). Flight data provided by [OpenSky Network](https://opensky-network.org/) (open data). Airline prefixes based on public ICAO codes.
