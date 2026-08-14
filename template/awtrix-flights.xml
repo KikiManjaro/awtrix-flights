@@ -32,8 +32,8 @@
   <DonateText/>
   <DonateLink/>
   <Requires/>
-  <Config Name="HOME_LAT" Target="HOME_LAT" Default="" Mode="" Description="Latitude of your home in decimal degrees (required). Google Maps -> right-click your home -> What's here?" Type="Variable" Display="always" Required="true" Mask="false">47.8649</Config>
-  <Config Name="HOME_LON" Target="HOME_LON" Default="" Mode="" Description="Longitude of your home in decimal degrees (required)." Type="Variable" Display="always" Required="true" Mask="false">2.1243</Config>
+  <Config Name="HOME_LAT" Target="HOME_LAT" Default="47.8649" Mode="" Description="Latitude of your home in decimal degrees (required). Google Maps -> right-click your home -> What's here?" Type="Variable" Display="always" Required="true" Mask="false">47.8649</Config>
+  <Config Name="HOME_LON" Target="HOME_LON" Default="2.1243" Mode="" Description="Longitude of your home in decimal degrees (required)." Type="Variable" Display="always" Required="true" Mask="false">2.1243</Config>
   <Config Name="RADIUS_KM" Target="RADIUS_KM" Default="5" Mode="" Description="Detection radius around home in km. An aircraft is shown only when it comes within this distance of your coordinates (e.g. 10 = show aircraft within 10 km)." Type="Variable" Display="always" Required="false" Mask="false">5</Config>
   <Config Name="MIN_ALT_M" Target="MIN_ALT_M" Default="300" Mode="" Description="Minimum aircraft altitude in meters (aircraft below this are ignored)." Type="Variable" Display="always" Required="false" Mask="false">300</Config>
   <Config Name="AWTRIX_HOST" Target="AWTRIX_HOST" Default="192.168.1.27" Mode="" Description="AWTRIX unit(s), comma-separated for multiple displays (e.g. 192.168.1.27,192.168.1.123)." Type="Variable" Display="always" Required="true" Mask="false">192.168.1.27</Config>
