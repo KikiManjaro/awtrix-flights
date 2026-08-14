@@ -101,16 +101,30 @@ MESSAGE_TEMPLATE={callsign} {altitude_m}m
 
 ### 🧭 Orientation de l'écran (`AWTRIX_BEARING`)
 
-L'icône avion est tournée pour pointer dans la **direction réelle** du vol. Pour que ce soit exact, il faut indiquer comment votre écran est posé — l'angle entre le **haut de l'écran** et le **nord géographique**, dans le sens horaire :
+L'icône avion est tournée pour pointer dans la **direction réelle** du vol. Pour que ce soit exact, il faut indiquer comment ton écran est posé.
 
-| Écran | Valeur |
+**Définition** : `AWTRIX_BEARING` est l'angle, dans le sens horaire, entre le **haut de l'écran** (tel qu'affiché — le côté où le texte défile) et le **nord géographique**.
+
+| Le haut de l'écran pointe vers… | Valeur |
 |---|---|
-| Haut de l'écran vers le nord | `0` |
-| Haut de l'écran vers l'est | `90` |
-| Haut de l'écran vers le sud | `180` |
-| Haut de l'écran vers l'ouest | `270` |
+| Nord | `0` |
+| Est | `90` |
+| Sud | `180` |
+| Ouest | `270` |
 
-> 💡 Un AWTRIX posé à plat sur une table avec son port USB vers le nord = `AWTRIX_BEARING=0`. Un écran mural (interface orientée vers vous) : le haut de l'écran est généralement vers le nord si vous êtes face au nord, etc.
+**Comment le mesurer (30 secondes) :**
+1. Regarde ton AWTRIX et repère le **bord supérieur de la matrice LED** (le côté où le texte commence — le « haut » de l'heure).
+2. Ouvre la **boussole de ton téléphone**.
+3. Pose le téléphone le long du bord supérieur de l'écran (comme pour viser depuis ce bord).
+4. La direction affichée = ton `AWTRIX_BEARING`.
+
+*Exemple* : si le haut de ton écran fait face à ta baie vitrée orientée à l'ouest → `AWTRIX_BEARING=270`. Un avion qui vole plein ouest sera dessiné avec le nez pointant vers le haut de l'écran (= l'ouest réel ✅).
+
+**Deux pièges à connaître :**
+1. **Rotation d'écran dans le firmware** : si tu as activé une *Screen rotation* dans l'UI web AWTRIX, le « haut » désigne ici le **haut affiché** (là où le texte commence), pas le haut physique du boîtier.
+2. **Même convention horaire qu'OpenSky** : angle affiché = `track − bearing`. Si tu te trompes de 180°, l'icône pointera dans la direction opposée (facile à repérer sur un vol évident vers l'est).
+
+**Astuce de calibrage** : en cas de doute, commence avec `AWTRIX_BEARING=0`, attends un avion au cap évident (ex. un vol vers l'est), et vérifie que l'icône pointe à droite. Si elle pointe à gauche, ajoute 180.
 
 ### MQTT
 

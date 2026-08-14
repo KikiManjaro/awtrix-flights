@@ -99,16 +99,30 @@ MESSAGE_TEMPLATE={callsign} {altitude_m}m
 
 ### 🧭 Screen orientation (`AWTRIX_BEARING`)
 
-The plane icon is rotated to point in the aircraft's **real direction**. For this to be accurate, tell the app how your display is placed — the angle between the **top of the screen** and **geographic north**, clockwise:
+The plane icon is rotated to point in the aircraft's **real direction**. For this to be accurate, you must tell the app how your display is placed.
 
-| Display position | Value |
+**Definition**: `AWTRIX_BEARING` is the angle, clockwise, between the **top of the screen** (as displayed — where the text starts scrolling) and **geographic north**.
+
+| Top of the screen points towards... | Value |
 |---|---|
-| Top of screen facing north | `0` |
-| Top of screen facing east | `90` |
-| Top of screen facing south | `180` |
-| Top of screen facing west | `270` |
+| North | `0` |
+| East | `90` |
+| South | `180` |
+| West | `270` |
 
-> 💡 A flat-mounted AWTRIX with its USB port pointing north = `AWTRIX_BEARING=0`. A wall-mounted display (UI facing you): the top of the screen points north when you face north, etc.
+**How to measure it (30 seconds):**
+1. Look at your AWTRIX and identify the **top edge of the LED matrix** (the side where the text starts — the "top" of the clock).
+2. Open the **compass app** on your phone.
+3. Lay the phone along the top edge of the display (as if aiming from it).
+4. The direction shown is your `AWTRIX_BEARING`.
+
+*Example*: if the top of your display faces your west-facing window → `AWTRIX_BEARING=270`. An aircraft flying due west will then be drawn with its nose pointing up the screen (= real west ✅).
+
+**Two pitfalls:**
+1. **Firmware screen rotation**: if you set a *Screen rotation* in the AWTRIX web UI, the "top" here means the **displayed top** (where text starts), not the physical top of the case.
+2. **Same clockwise convention as OpenSky**: displayed angle = `track − bearing`. If you get it wrong by 180°, the icon will point in the opposite direction (easy to spot on an obvious eastbound flight).
+
+**Calibration tip**: if unsure, start with `AWTRIX_BEARING=0`, wait for an aircraft on an obvious heading (e.g. flying east), and check the icon points right. If it points left, add 180.
 
 ### MQTT
 
