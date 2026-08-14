@@ -1,0 +1,8 @@
+# Fichiers exclus de l'image Docker
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+test_*.py
+.git

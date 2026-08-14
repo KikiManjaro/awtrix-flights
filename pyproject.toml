@@ -1,0 +1,49 @@
+[project]
+name = "awtrix-flights"
+version = "0.1.0"
+description = "Affiche en live sur un écran AWTRIX 3 les avions qui survolent votre maison (OpenSky Network, ADS-B)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "Kylian Meulin", email = "kikimanjaro@users.noreply.github.com" },
+]
+keywords = ["awtrix", "ads-b", "opensky", "flights", "led-matrix", "homelab"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Home Automation",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/KikiManjaro/awtrix-flights"
+Repository = "https://github.com/KikiManjaro/awtrix-flights"
+Issues = "https://github.com/KikiManjaro/awtrix-flights/issues"
+
+[project.scripts]
+awtrix-flights = "main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 99
+target-version = "py310"
+exclude = [".github"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"

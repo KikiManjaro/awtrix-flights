@@ -1,0 +1,26 @@
+# awtrix-flights — déploiement Docker Compose
+#
+# Démarrage :   docker compose up -d
+# Logs :        docker compose logs -f
+# Arrêt :       docker compose stop
+# Redémarrage auto : restart: unless-stopped -> le conteneur est
+# relancé automatiquement après un crash ET au démarrage du daemon
+# Docker (pas après un `docker compose stop` volontaire).
+
+services:
+  awtrix-flights:
+    # Image pré-construite publiée par le CI sur GHCR.
+    # Pour builder localement : remplacer `image:` par `build: .`
+    image: ghcr.io/kikimanjaro/awtrix-flights:latest
+    container_name: awtrix-flights
+    restart: unless-stopped
+    # tini comme PID 1 : signaux propres (SIGTERM -> arrêt propre du service)
+    init: true
+    # Aucune écriture sur disque nécessaire -> système de fichiers en lecture seule
+    read_only: true
+    tmpfs: /tmp
+    # Toutes les variables du service (HOME_LAT, HOME_LON, ...) :
+    # copier .env.example -> .env puis ajuster
+    env_file: .env
+    environment:
+      - TZ=${TZ:-Europe/Paris}
