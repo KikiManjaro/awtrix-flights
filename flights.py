@@ -45,7 +45,40 @@ _IDX_LAT = 6
 _IDX_BARO_ALT = 7
 _IDX_ON_GROUND = 8
 _IDX_VELOCITY = 9
+_IDX_TRUE_TRACK = 10
 _IDX_GEO_ALT = 13
+_IDX_CATEGORY = 17
+
+# Libellés des catégories OpenSky (champ "category", index 17).
+CATEGORY_NAMES = {
+    0: "Inconnu",
+    1: "No ADS-B",
+    2: "Léger",
+    3: "Petit",
+    4: "Moyen",
+    5: "Large",
+    6: "Gros porteur",
+    7: "Haute perf.",
+    8: "Hélicoptère",
+    9: "Planeur",
+    10: "Ballon",
+    11: "Parachutiste",
+    12: "ULM",
+    13: "Réservé",
+    14: "Drone",
+    15: "Spatial",
+    16: "Surface",
+    17: "Urgence",
+    18: "Service",
+    19: "Obstacle",
+}
+
+
+def category_name(category):
+    """Libellé lisible d'une catégorie OpenSky (ou None si inconnue)."""
+    if category is None:
+        return None
+    return CATEGORY_NAMES.get(int(category))
 
 
 class OpenSkyError(Exception):
@@ -120,6 +153,8 @@ def filter_aircraft(states, home_lat, home_lon, radius_km, min_alt_m):
                 "speed_ms": state[_IDX_VELOCITY],
                 "distance_km": round(distance, 2),
                 "last_contact": state[_IDX_LAST_CONTACT],
+                "track": state[_IDX_TRUE_TRACK],
+                "category": state[_IDX_CATEGORY],
             }
         )
     aircraft.sort(key=lambda a: a["distance_km"])

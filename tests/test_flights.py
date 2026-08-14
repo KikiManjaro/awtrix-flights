@@ -32,8 +32,10 @@ def make_state(
     on_ground=0,
     velocity=220.0,
     geo_alt=4050.0,
+    track=270.0,
+    category=3,
 ):
-    """Construit une ligne "states" OpenSky (16 champs)."""
+    """Construit une ligne "states" OpenSky (18 champs, indices 0..17)."""
     return [
         icao,
         callsign,
@@ -45,13 +47,14 @@ def make_state(
         baro_alt,
         on_ground,
         velocity,
-        0.0,
-        0.0,
-        None,
-        geo_alt,
-        "1000",
-        False,
-        0,
+        track,  # index 10 : true_track (cap en degrés)
+        0.0,  # index 11 : vertical_rate
+        0.0,  # index 12 : sensors
+        geo_alt,  # index 13 : geo_altitude
+        "1000",  # index 14 : squawk
+        False,  # index 15 : spi
+        0,  # index 16 : position_source
+        category,  # index 17 : category
     ]
 
 

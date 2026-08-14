@@ -17,7 +17,7 @@ RUN apt-get update \
 WORKDIR /app
 
 # Copie du code applicatif uniquement (voir .dockerignore)
-COPY main.py flights.py awtrix_client.py ./
+COPY main.py flights.py awtrix_client.py airlines.py mqtt_client.py ./
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

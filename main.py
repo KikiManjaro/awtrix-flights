@@ -39,6 +39,7 @@ import time
 
 import awtrix_client
 import flights
+import mqtt_client
 
 logger = logging.getLogger("main")
 
@@ -96,6 +97,22 @@ class CooldownTracker:
 
     def __len__(self) -> int:
         return len(self._last_notified)
+
+
+def _mqtt_enabled() -> bool:
+    """Publication MQTT activée ? (MQTT_ENABLED, défaut false)."""
+    raw = os.environ.get("MQTT_ENABLED", "").strip().lower()
+    if not raw:
+        return False
+    return raw not in ("false", "0", "no", "off")
+
+
+def _publish_mqtt(event: str, payload: dict) -> None:
+    """Publie un événement MQTT (best effort, jamais bloquant)."""
+    if not _mqtt_enabled():
+        return
+    topic = os.environ.get("MQTT_TOPIC_PREFIX", "").strip() or "awtrix-flights"
+    mqtt_client.publish(f"{topic}/{event}", payload)
 
 
 def run_once(
@@ -170,6 +187,14 @@ def run_once(
                 plane.get("distance_km") or "?",
                 speed_kmh if speed_kmh is not None else "?",
             )
+            _publish_mqtt(
+                "detection",
+                {
+                    **plane,
+                    "speed_kmh": speed_kmh,
+                    "notified_at": int(time.time()),
+                },
+            )
         else:
             logger.warning(
                 "Échec d'affichage pour %s (écran injoignable ?) ; nouvel essai dans %ss.",
@@ -241,6 +266,11 @@ def main() -> int:
         awtrix_host,
     )
 
+    _publish_mqtt(
+        "status",
+        {"state": "online", "started_at": int(time.time())},
+    )
+
     # Ctrl-C (SIGINT) et SIGTERM (docker stop, systemd stop) -> arrêt propre.
     def _request_stop(signum, frame):  # noqa: ARG001
         raise KeyboardInterrupt
@@ -254,6 +284,10 @@ def main() -> int:
             time.sleep(poll_interval)
     except KeyboardInterrupt:
         logger.info("Arrêt demandé (Ctrl-C / SIGTERM), sortie propre.")
+        _publish_mqtt(
+            "status",
+            {"state": "offline", "stopped_at": int(time.time())},
+        )
         return 0
     except ValueError as exc:
         logger.error("Configuration invalide : %s", exc)

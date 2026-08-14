@@ -1,0 +1,23 @@
+# Dependabot — mises à jour automatiques des dépendances de CI
+# (le runtime est volontairement stdlib-only, rien à surveiller côté pip
+# applicatif : seuls les outils de build/test sont versionnés ici).
+
+version: 2
+updates:
+  # Actions GitHub utilisées dans les workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+
+  # Outils Python de la CI (pytest, pytest-cov, ruff)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    # Aucun requirements.txt : dependabot lit pyproject.toml (dev deps)
+    versioning-strategy: increase-if-necessary

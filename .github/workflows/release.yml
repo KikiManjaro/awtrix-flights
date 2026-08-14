@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Créer la GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extraire la version du tag
+        id: version
+        run: |
+          echo "tag=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "major_minor=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Changelog depuis les commits
+        id: changelog
+        run: |
+          PREV=$(git tag --sort=-v:refname | grep -E '^v[0-9]' | sed -n '2p' || true)
+          if [ -z "$PREV" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="$PREV..HEAD"
+          fi
+          {
+            echo "### Commits"
+            echo ""
+            git log --oneline --no-merges "$RANGE" | sed 's/^/- /' | head -60
+          } > /tmp/body.md
+
+      - name: Créer la Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "awtrix-flights ${{ github.ref_name }}"
+          body_path: /tmp/body.md
+          generate_release_notes: false
+
+      - name: Summary
+        run: |
+          echo "## Release ${{ github.ref_name }} 🚀" >> "$GITHUB_STEP_SUMMARY"
+          echo "L'image Docker est publiée sur GHCR avec le tag ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
