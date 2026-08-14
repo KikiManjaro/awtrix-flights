@@ -6,7 +6,7 @@ Chaque avion détecté dans le rayon configuré est affiché avec son callsign, 
 
 ![CI](https://github.com/KikiManjaro/awtrix-flights/actions/workflows/ci.yml/badge.svg)
 ![Docker](https://github.com/KikiManjaro/awtrix-flights/actions/workflows/docker-publish.yml/badge.svg)
-![Image](https://ghcr.io/kikimanjaro/awtrix-flights:latest)
+[![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fkikimanjaro%2Fawtrix-flights-blue?logo=docker)](https://github.com/users/KikiManjaro/packages/container/package/awtrix-flights)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
