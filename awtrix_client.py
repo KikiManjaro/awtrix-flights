@@ -69,18 +69,18 @@ REQUEST_TIMEOUT_S = 3.0  # ne jamais bloquer la boucle principale
 # Gabarit par défaut du message (compatible avec l'ancien format).
 DEFAULT_MESSAGE_TEMPLATE = "{callsign} {country} {altitude_m}m {speed_kmh}km/h"
 
-# Sprite avion 8x8 vu du dessus, nez vers le haut (nord, 0°). 1 = pixel allumé.
-# Asymétrique volontairement (nez fin / ailes / queue) pour que la rotation
-# soit visible sur l'écran.
+# Sprite avion 8x8 — icône LaMetric 11594 « Airplane » (vue du dessus, nez
+# vers le haut). 1 = pixel allumé. Asymétrique volontairement (nez fin /
+# ailes / queue) pour que la rotation soit visible sur l'écran.
 AIRCRAFT_SPRITE = [
-    0b00001000,
-    0b00011100,
-    0b00111110,
-    0b01111111,
-    0b11111111,
-    0b01111111,
-    0b00111110,
     0b00011000,
+    0b00011000,
+    0b00111100,
+    0b01111110,
+    0b11011011,
+    0b11011001,
+    0b00011000,
+    0b00111100,
 ]
 
 # Directions cardinales (pour le placeholder {direction}).
