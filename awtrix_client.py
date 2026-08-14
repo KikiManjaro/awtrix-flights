@@ -296,6 +296,10 @@ def build_draw_commands(plane_info: dict | None) -> list[dict]:
     L'angle d'affichage = ``track - AWTRIX_BEARING`` (le track d'OpenSky est
     le cap de l'avion en degrés depuis le nord). Retourne [] si pas de track
     ou icône désactivée.
+
+    ⚠️ Firmware 0.98 : envoyer UN SEUL ``db`` avec les 64 couleurs (matrice
+    8x8) — plusieurs instructions ``db`` séparées font redémarrer l'écran.
+    Les pixels éteints sont transparents ([0,0,0]).
     """
     if not plane_info or not _get_icon_enabled():
         return []
@@ -309,8 +313,16 @@ def build_draw_commands(plane_info: dict | None) -> list[dict]:
     bearing = _get_bearing()
     angle = (track_f - bearing) % 360.0
     color = _get_icon_color()
-    pixels = _rotate_sprite(AIRCRAFT_SPRITE, angle)
-    return [{"db": [x, y, 1, 1, color]} for x, y in pixels]
+    pixels = set(_rotate_sprite(AIRCRAFT_SPRITE, angle))
+
+    colors: list[int] = []
+    for y in range(8):
+        for x in range(8):
+            if (x, y) in pixels:
+                colors.extend(color)
+            else:
+                colors.extend([0, 0, 0])  # transparent
+    return [{"db": [0, 0, 8, 8, colors]}]
 
 
 def _send_to_host(

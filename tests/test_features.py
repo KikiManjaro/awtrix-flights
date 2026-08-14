@@ -147,11 +147,21 @@ class DrawCommandsTest(unittest.TestCase):
     def test_draw_generated_for_track(self):
         draw = build_draw_commands(_plane(track=270))
         self.assertTrue(draw)
-        # chaque instruction est un db 1x1
-        for cmd in draw:
-            self.assertEqual(cmd["db"][2], 1)
-            self.assertEqual(cmd["db"][3], 1)
-            self.assertEqual(len(cmd["db"][4]), 3)
+        # UN SEUL db 8x8 avec 64 couleurs (firmware 0.98 : pas de db multiples)
+        self.assertEqual(len(draw), 1)
+        db = draw[0]["db"]
+        self.assertEqual(db[0], 0)  # x
+        self.assertEqual(db[1], 0)  # y
+        self.assertEqual(db[2], 8)  # w
+        self.assertEqual(db[3], 8)  # h
+        self.assertEqual(len(db[4]), 8 * 8 * 3)  # 64 couleurs RGB
+
+    def test_draw_has_color_pixels(self):
+        draw = build_draw_commands(_plane(track=270))
+        colors = draw[0]["db"][4]
+        # au moins un pixel allumé (couleur != transparent)
+        lit = [colors[i : i + 3] for i in range(0, len(colors), 3)]
+        self.assertTrue(any(c != [0, 0, 0] for c in lit))
 
     def test_no_draw_without_track(self):
         self.assertEqual(build_draw_commands(_plane(track=None)), [])
@@ -165,16 +175,14 @@ class DrawCommandsTest(unittest.TestCase):
         draw_a = build_draw_commands(_plane(track=90))
         os.environ["AWTRIX_BEARING"] = "90"
         draw_b = build_draw_commands(_plane(track=90))
-        # Même sprite rotaté de 0° dans les deux cas -> mêmes pixels.
-        # Le premier (bearing=0) est rotaté de 90°, le second de 0°.
-        self.assertNotEqual(
-            sorted(c["db"][:2] for c in draw_a),
-            sorted(c["db"][:2] for c in draw_b),
-        )
+        # Les deux rendus diffèrent : rotation 90° vs 0°.
+        self.assertNotEqual(draw_a[0]["db"][4], draw_b[0]["db"][4])
 
     def test_draw_pixels_are_lit_in_sprite(self):
         draw = build_draw_commands(_plane(track=0))
-        self.assertGreater(len(draw), 0)
+        colors = draw[0]["db"][4]
+        lit = [colors[i : i + 3] for i in range(0, len(colors), 3)]
+        self.assertGreater(sum(1 for c in lit if c != [0, 0, 0]), 0)
 
 
 class PayloadTest(unittest.TestCase):
