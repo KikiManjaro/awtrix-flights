@@ -195,11 +195,76 @@ awtrix-flights/
 ├── airlines.py        # résolution compagnie depuis le préfixe callsign
 ├── awtrix_client.py   # client API AWTRIX (template, icône orientée, multi-écrans)
 ├── mqtt_client.py     # client MQTT publish-only (stdlib, zéro dépendance)
+├── scripts/
+│   └── awtrix_capture.py  # capture l'écran AWTRIX en GIF animé (outil dev)
 ├── tests/             # 111 tests unitaires (unittest, réseau 100% mocké)
 ├── Dockerfile         # image ~50 Mo, non-root
 ├── docker-compose.yml # déploiement en une commande
 └── .github/workflows/ # CI + publication GHCR + releases
 ```
+
+## 🛰️ Comment ça marche (API utilisée)
+
+Le projet interroge l'**API publique OpenSky Network** (`https://opensky-network.org/api/states/all`) — un agrégateur mondial du réseau **ADS-B** (le même système que les récepteurs qui équipent les avions : ils diffusent leur position, altitude, vitesse et cap par radio, et des milliers de récepteurs terrestres collectent ces données pour OpenSky).
+
+### Endpoint utilisé
+
+```
+GET https://opensky-network.org/api/states/all?lamin=47.81&lomin=2.07&lamax=47.92&lomax=2.18
+```
+
+Les 4 paramètres `lamin/lomin/lamax/lomax` délimitent une **boîte géographique** autour de la maison (calculée par `flights.bounding_box()` avec 20 % de marge). La réponse contient un tableau `states` : **une ligne par avion** avec 18 champs, dont ceux utilisés ici :
+
+| Index | Champ OpenSky | Utilisation |
+|---|---|---|
+| 1 | `callsign` | Indicatif (ex. `AFR123`) → compagnie via `airlines.py` |
+| 2 | `origin_country` | Pays d'immatriculation |
+| 5/6 | `longitude` / `latitude` | Position → distance Haversine depuis la maison |
+| 7 | `baro_altitude` | Altitude (repli sur `geo_altitude` index 13) |
+| 8 | `on_ground` | Filtré (on ignore les avions au sol) |
+| 9 | `velocity` | Vitesse m/s → convertie en km/h |
+| 10 | `true_track` | **Cap en degrés → orientation de l'icône** |
+| 17 | `category` | Type d'avion (gros porteur, hélico, drone…) |
+
+Le service **ne remonte jamais d'état intermédiaire** : chaque cycle interroge la zone, filtre (position valide, hors sol, altitude ≥ `MIN_ALT_M`, distance ≤ `RADIUS_KM`), trie par distance, puis affiche les nouveaux avions (anti-spam par callsign).
+
+> ℹ️ **Limites** : l'API publique est gratuite sans compte (≈ 4 requêtes/min par IP en pratique) et l'historique est limité. Le backoff intégré gère les réponses `429` proprement. Pour des données plus riches, OpenSky propose des comptes gratuits avec authentification — non requis ici.
+
+## 🎨 Icônes : faut-il télécharger quoi que ce soit sur l'AWTRIX ?
+
+**Non, rien à télécharger.** 🎉
+
+L'icône avion n'utilise **pas** le système d'icônes LaMetric de l'AWTRIX (celui qui exige de télécharger chaque icône via l'onglet *Icon* de l'interface web). À la place, `awtrix_client.py` **dessine le sprite pixel par pixel** via l'instruction `draw` de l'API AWTRIX :
+
+```json
+{"draw": [{"db": [x, y, 1, 1, [255, 170, 0]]}, ...]}
+```
+
+Chaque pixel allumé du sprite 8×8 est envoyé individuellement avec sa couleur (`ICON_COLOR`), ce qui permet :
+- l'**orientation dynamique** (le sprite est tourné en Python selon `track − AWTRIX_BEARING`, impossible avec une icône fixe téléchargée),
+- zéro manipulation sur l'écran : le premier `notify_aircraft()` fait tout.
+
+Seules les autres apps du repo (météo, énergie…) utilisent des icônes LaMetric téléchargées — c'est indépendant de ce projet.
+
+## 📸 Capturer l'écran AWTRIX (image / GIF animé)
+
+Le firmware AWTRIX 3 (0.98) n'a **pas d'endpoint de capture native**, mais il expose `GET /api/screen` qui renvoie le rendu LED brut : 256 entiers (32×8) avec les vraies couleurs RGB888. L'outil `scripts/awtrix_capture.py` interroge cet endpoint en boucle et assemble un **GIF animé** :
+
+```bash
+pip install pillow   # dépendance outil uniquement (pas le runtime)
+python3 scripts/awtrix_capture.py --host 192.168.1.27 --seconds 15 --fps 2 --scale 12 --out awtrix-live.gif
+```
+
+| Option | Rôle | Défaut |
+|---|---|---|
+| `--host` | IP de l'AWTRIX | `192.168.1.27` |
+| `--port` | Port API | `80` |
+| `--seconds` | Durée de capture | `15` |
+| `--fps` | Images par seconde | `2` |
+| `--scale` | Agrandissement (32×8 → 320×80) | `10` |
+| `--out` | Fichier de sortie | `awtrix.gif` |
+
+Résultat : un GIF 320×80 (par défaut) montrant la boucle d'apps en mouvement — idéal pour documenter un affichage, déboguer le rendu, ou montrer le résultat sur un README/forum.
 
 ## 📜 Licence
 
