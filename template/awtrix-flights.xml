@@ -18,6 +18,10 @@
   <Name>awtrix-flights</Name>
   <Repository>ghcr.io/kikimanjaro/awtrix-flights:latest</Repository>
   <Registry>https://github.com/users/KikiManjaro/packages/container/package/awtrix-flights</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
   <Support>https://github.com/KikiManjaro/awtrix-flights</Support>
   <Project>https://github.com/KikiManjaro/awtrix-flights</Project>
   <Overview>Displays live aircraft overflying your home on an AWTRIX 3 LED display (OpenSky Network / ADS-B). Each detected aircraft is shown with callsign, airline, country, altitude, speed and a heading-oriented icon. Zero pip dependencies, MQTT publishing, anti-spam, multi-display support.</Overview>
