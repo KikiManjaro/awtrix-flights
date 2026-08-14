@@ -60,8 +60,8 @@ jobs:
 
       - name: Summary
         run: |
-          echo "## Image publiée 🚀" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          for tag in ${{ steps.meta.outputs.tags }}; do
-            echo "- \`$tag\`" >> "$GITHUB_STEP_SUMMARY"
-          done
+          {
+            echo "## Image publiée 🚀"
+            echo ""
+            echo "${{ steps.meta.outputs.tags }}"
+          } >> "$GITHUB_STEP_SUMMARY"
