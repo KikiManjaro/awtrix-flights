@@ -162,19 +162,30 @@ Le texte défile s'il dépasse la largeur de la matrice. La couleur de l'icône 
 
 ## 🖥️ Unraid (Community Apps)
 
-Un template prêt à l'emploi est inclus dans le repo (`template/awtrix-flights.xml`) — aucune ligne de commande nécessaire.
+Un template prêt à l'emploi est inclus dans le repo (`template/awtrix-flights.xml`) — deux commandes `curl` et c'est installé.
+
+> ℹ️ **Note** : depuis Unraid 6.10, le réglage *Template Repositories* a été retiré de l'UI. Le template s'installe en déposant le XML directement sur la clé USB — même résultat, sans édition de fichier manuelle.
 
 **Installation :**
-1. Unraid → **Apps** → onglet *Settings* → **Template Repositories**
-2. Ajouter : `https://github.com/KikiManjaro/awtrix-flights`
-3. Retour dans **Apps** → rechercher `awtrix-flights` → **Install**
-4. Renseigner `HOME_LAT`, `HOME_LON`, `AWTRIX_HOST` (séparés par des virgules pour plusieurs écrans) → **Apply**
+1. Unraid → **Tools** → **Terminal** (ou SSH) et lancer :
+   ```bash
+   mkdir -p /boot/config/plugins/dockerMan/templates-user
+   curl -o /boot/config/plugins/dockerMan/templates-user/awtrix-flights.xml \
+     https://raw.githubusercontent.com/KikiManjaro/awtrix-flights/main/template/awtrix-flights.xml
+   ```
+2. **Docker** → **Add Container** → choisir **awtrix-flights** dans la liste des templates
+3. Renseigner `HOME_LAT`, `HOME_LON`, `AWTRIX_HOST` (séparés par des virgules pour plusieurs écrans) → **Apply**
 
-Le template expose tous les réglages des tableaux ci-dessus (gabarit, couleur d'icône, orientation, MQTT...). L'image est tirée de GHCR (`ghcr.io/kikimanjaro/awtrix-flights:latest`, multi-arch amd64/arm64) et redémarre automatiquement (`--restart unless-stopped`).
+Le template expose tous les réglages des tableaux ci-dessus (gabarit, couleur d'icône, orientation, MQTT...). L'image est tirée de GHCR (`ghcr.io/kikimanjaro/awtrix-flights:latest`, multi-arch amd64/arm64, publique) et redémarre automatiquement (`--restart unless-stopped`).
 
-> ⚠️ **Note pour un usage public** : pour que le template soit installable par tout le monde via les Community Apps, le repo (et donc le paquet GHCR) doit être **public**. Tant que le repo est privé, tu peux quand même installer le template sur ton propre Unraid (la fonction Template Repositories fonctionne avec les repos privés pour ton compte).
+**Alternative via Community Apps** (template géré par CA, catégorie *Private*) :
+```bash
+mkdir -p /boot/config/plugins/community.applications/private/LTM
+curl -o /boot/config/plugins/community.applications/private/LTM/awtrix-flights.xml \
+  https://raw.githubusercontent.com/KikiManjaro/awtrix-flights/main/template/awtrix-flights.xml
+```
 
-**Alternative manuelle** (sans Community Apps) : depuis un clone du repo, lancer `bash install-unraid.sh` — il copie le projet dans `/mnt/user/appdata/awtrix-flights`, génère le `.env` et lance le conteneur (redémarrage auto).
+**Alternative manuelle** (sans template) : depuis un clone du repo, lancer `bash install-unraid.sh` — il copie le projet dans `/mnt/user/appdata/awtrix-flights`, génère le `.env` et lance le conteneur (redémarrage auto).
 
 ## 🔧 Sans Docker (Python direct)
 
