@@ -160,6 +160,21 @@ class FilterAircraftTest(unittest.TestCase):
         result = flights.filter_aircraft(states, HOME_LAT, HOME_LON, RADIUS_KM, MIN_ALT_M)
         self.assertEqual(result[0]["speed_ms"], 235.5)
 
+    def test_truncated_state_without_category_field(self):
+        # L'API OpenSky renvoie parfois des états TRONQUÉS (moins de 18
+        # champs, sans l'index category). Ne doit pas lever IndexError :
+        # les champs manquants deviennent None.
+        states = [make_state()[:16]]  # on coupe les 2 derniers champs
+        result = flights.filter_aircraft(states, HOME_LAT, HOME_LON, RADIUS_KM, MIN_ALT_M)
+        self.assertEqual(len(result), 1)
+        self.assertIsNone(result[0]["category"])
+
+    def test_short_state_still_filters_position(self):
+        # État très court (6 champs) : pas de position exploitable -> ignoré.
+        states = [make_state()[:6]]
+        result = flights.filter_aircraft(states, HOME_LAT, HOME_LON, RADIUS_KM, MIN_ALT_M)
+        self.assertEqual(result, [])
+
 
 class GetAircraftOverheadTest(unittest.TestCase):
     def setUp(self):

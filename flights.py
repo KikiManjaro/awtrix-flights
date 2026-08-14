@@ -115,12 +115,23 @@ def _has_valid_position(lat, lon):
     return not (abs(lat) < 1e-6 and abs(lon) < 1e-6)
 
 
+def _field(state, idx):
+    """Accès sécurisé à un champ OpenSky.
+
+    L'API renvoie des états de longueur variable (16 à 18 champs selon les
+    cas) : un index hors limites retourne None au lieu de lever IndexError.
+    """
+    if idx < len(state):
+        return state[idx]
+    return None
+
+
 def _altitude_m(state):
     """Altitude barométrique, sinon géométrique, sinon None."""
-    baro = state[_IDX_BARO_ALT]
+    baro = _field(state, _IDX_BARO_ALT)
     if baro is not None:
         return baro
-    return state[_IDX_GEO_ALT]
+    return _field(state, _IDX_GEO_ALT)
 
 
 def filter_aircraft(states, home_lat, home_lon, radius_km, min_alt_m):
@@ -132,11 +143,11 @@ def filter_aircraft(states, home_lat, home_lon, radius_km, min_alt_m):
     """
     aircraft = []
     for state in states:
-        lat = state[_IDX_LAT]
-        lon = state[_IDX_LON]
+        lat = _field(state, _IDX_LAT)
+        lon = _field(state, _IDX_LON)
         if not _has_valid_position(lat, lon):
             continue
-        if state[_IDX_ON_GROUND]:
+        if _field(state, _IDX_ON_GROUND):
             continue
         altitude = _altitude_m(state)
         if altitude is None or altitude < min_alt_m:
@@ -144,17 +155,17 @@ def filter_aircraft(states, home_lat, home_lon, radius_km, min_alt_m):
         distance = haversine_km(home_lat, home_lon, lat, lon)
         if distance > radius_km:
             continue
-        callsign = (state[_IDX_CALLSIGN] or "").strip()
+        callsign = (_field(state, _IDX_CALLSIGN) or "").strip()
         aircraft.append(
             {
                 "callsign": callsign,
-                "country": state[_IDX_COUNTRY],
+                "country": _field(state, _IDX_COUNTRY),
                 "altitude_m": round(altitude),
-                "speed_ms": state[_IDX_VELOCITY],
+                "speed_ms": _field(state, _IDX_VELOCITY),
                 "distance_km": round(distance, 2),
-                "last_contact": state[_IDX_LAST_CONTACT],
-                "track": state[_IDX_TRUE_TRACK],
-                "category": state[_IDX_CATEGORY],
+                "last_contact": _field(state, _IDX_LAST_CONTACT),
+                "track": _field(state, _IDX_TRUE_TRACK),
+                "category": _field(state, _IDX_CATEGORY),
             }
         )
     aircraft.sort(key=lambda a: a["distance_km"])
