@@ -92,6 +92,13 @@ AIRCRAFT_SPRITE = [
 # Directions cardinales (pour le placeholder {direction}).
 _COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 
+# Clés de placeholders reconnus par le template MESSAGE_TEMPLATE.
+KNOWN_KEYS = {
+    "callsign", "country", "airline", "category",
+    "altitude_m", "altitude_ft", "speed_ms", "speed_kmh",
+    "distance_km", "track", "direction",
+}
+
 
 def _get_hosts() -> list[str]:
     """Retourne la liste des hôtes AWTRIX (AWTRIX_HOST, séparés par des virgules)."""
@@ -245,23 +252,10 @@ def build_aircraft_message(plane_info: dict | None, template: str | None = None)
 
     # Résolution des placeholders {nom}. Les placeholders inconnus sont
     # conservés littéralement (le gabarit reste lisible).
-    known_keys = {
-        "callsign",
-        "country",
-        "airline",
-        "category",
-        "altitude_m",
-        "altitude_ft",
-        "speed_ms",
-        "speed_kmh",
-        "distance_km",
-        "track",
-        "direction",
-    }
 
     def _sub(match):
         key = match.group(1)
-        if key not in known_keys:
+        if key not in KNOWN_KEYS:
             return match.group(0)
         return _format_value(key, plane_info)
 
@@ -274,6 +268,161 @@ def build_aircraft_message(plane_info: dict | None, template: str | None = None)
     # altitude -> " m" seul). Les valeurs collées ("10500m") sont conservées.
     message = re.sub(r"\s+(?:m|ft|km/h)(?=\s|$)", "", message)
     return message or None
+
+
+# --- Couleurs du texte multicolore ----------------------------------------
+# Un segment AWTRIX = {"t": "texte", "c": "#RRGGBB"}.  Un même message peut
+# contenir plusieurs segments de couleurs différentes.
+#
+# FIELD_COLORS : liste de paires key=RRGGBB séparées par des virgules.
+# Exemple : "callsign=FFAA00,altitude_m=00DFFF,speed_kmh=33FF33"
+# Les champs non listés utilisent DEFAULT_COLOR_TEXT.
+# Si FIELD_COLORS n'est pas défini → texte brut (pas de multicolore).
+
+DEFAULT_COLOR_TEXT = "#FFFFFF"
+
+_FIELD_COLOR_DEFAULTS: dict[str, str] = {
+    "callsign": "#FFAA00",
+    "altitude_m": "#00DFFF",
+    "altitude_ft": "#00DFFF",
+    "speed_ms": "#33FF33",
+    "speed_kmh": "#33FF33",
+    "country": "#FFFFFF",
+    "airline": "#FFFFFF",
+    "category": "#FFFFFF",
+    "distance_km": "#FFFFFF",
+    "track": "#FFFFFF",
+    "direction": "#FFFFFF",
+}
+
+
+def _parse_field_colors() -> dict[str, str]:
+    """Parse FIELD_COLORS en dict champ -> #RRGGBB."""
+    raw = os.environ.get("FIELD_COLORS", "").strip()
+    if not raw:
+        return {}
+    colors: dict[str, str] = {}
+    for part in raw.split(","):
+        part = part.strip()
+        if "=" not in part:
+            continue
+        key, _, val = part.partition("=")
+        val = val.strip().lstrip("#")
+        if len(val) == 6 and all(c in "0123456789abcdefABCDEF" for c in val):
+            colors[key.strip()] = f"#{val.upper()}"
+    return colors
+
+
+def _color_for(field: str, overrides: dict[str, str]) -> str:
+    """Couleur d'un champ : override FIELD_COLORS > défaut par champ > blanc."""
+    return overrides.get(field, _FIELD_COLOR_DEFAULTS.get(field, DEFAULT_COLOR_TEXT))
+
+
+def build_colored_segments(
+    plane_info: dict | None, template: str | None = None
+) -> list[dict] | None:
+    """Construit une liste de segments colorés pour l'API AWTRIX 3.
+
+    Chaque placeholder du template devient un segment avec sa couleur
+    (depuis FIELD_COLORS ou couleurs par défaut).  Les textes littéraux
+    (espaces, unités) prennent la couleur du champ qui les précède.
+
+    Retourne None si le résultat est vide.
+    """
+    if not plane_info:
+        return None
+    tpl = template if template is not None else _get_template()
+    overrides = _parse_field_colors()
+
+    # 1. Tokeniser le template.
+    parts = re.split(r"(\{\w+\})", tpl)
+
+    # 2. Résoudre chaque token → (texte, clé_champ|None).
+    tokens: list[tuple[str, str | None]] = []
+    for part in parts:
+        if not part:
+            continue
+        m = re.fullmatch(r"\{(\w+)\}", part)
+        if m and m.group(1) in KNOWN_KEYS:
+            val = _format_value(m.group(1), plane_info)
+            tokens.append((val, m.group(1)))
+        else:
+            tokens.append((part, None))
+
+    if not tokens:
+        return None
+
+    # 2b. Retirer les unités orphelines (m, ft, km/h) quand le champ
+    #     qui les précède est vide.
+    cleaned_tokens: list[tuple[str, str | None]] = []
+    for i, (text, field) in enumerate(tokens):
+        if field is None and text.strip() in ("m", "ft", "km/h"):
+            # Vérifier si le token précédent est un champ vide.
+            prev_field_val = None
+            for j in range(i - 1, -1, -1):
+                if tokens[j][1] is not None:
+                    prev_field_val = tokens[j][0]
+                    break
+            if prev_field_val is not None and not prev_field_val:
+                # Champ précédent vide → supprimer l'unité orpheline.
+                continue
+        cleaned_tokens.append((text, field))
+    tokens = cleaned_tokens
+
+    # 3. Assigner une couleur : champ → sa couleur, littéral → couleur
+    #    du champ précédent (ou défaut).
+    current_color = DEFAULT_COLOR_TEXT
+    colored: list[dict] = []
+    for text, field in tokens:
+        if not text:
+            continue
+        if field is not None:
+            current_color = _color_for(field, overrides)
+        colored.append({"t": text, "c": current_color})
+
+    if not colored:
+        return None
+
+    # 4. Fusionner les segments consécutifs de même couleur, en gardant
+    #    les espaces comme séparateurs.
+    merged: list[dict] = [colored[0]]
+    for seg in colored[1:]:
+        if seg["c"] == merged[-1]["c"]:
+            merged[-1]["t"] += seg["t"]
+        else:
+            merged.append(seg)
+
+    # 5. Supprimer les segments vides (mais PAS les espaces/separateurs).
+    merged = [s for s in merged if s["t"]]
+
+    # 6. Nettoyage final : réduire les espaces multiples à un seul.
+    #    On reconcat le texte complet, on note les positions des espaces
+    #    multiples, puis on les retire des segments.
+    full = "".join(s["t"] for s in merged)
+    cleaned_full = " ".join(full.split())
+    if full != cleaned_full:
+        # Mapping caractère par caractère : on garde tout sauf les espaces
+        # redondants.  On travaille sur la concaténation des segments.
+        result: list[dict] = []
+        pos = 0
+        in_whitespace_run = False
+        for seg in merged:
+            seg_text = seg["t"]
+            new_chars: list[str] = []
+            for ch in seg_text:
+                if ch in " \t":
+                    if not in_whitespace_run:
+                        new_chars.append(" ")
+                        in_whitespace_run = True
+                else:
+                    new_chars.append(ch)
+                    in_whitespace_run = False
+            new_text = "".join(new_chars)
+            if new_text:
+                result.append({"t": new_text, "c": seg["c"]})
+        merged = result
+
+    return merged or None
 
 
 def _rotate_sprite(sprite: list[int], angle_deg: float) -> list[tuple[int, int]]:
@@ -375,23 +524,34 @@ def _send_to_host(
 
 
 def build_payload(plane_info: dict | None) -> dict | None:
-    """Payload complet pour l'API AWTRIX (texte + icône orientée).
+    """Payload complet pour l'API AWTRIX (texte + éventuelle icône).
 
-    Retourne None si rien d'affichable.
+    Si FIELD_COLORS est défini, le ``text`` du payload est une liste de
+    segments ``{"t": ..., "c": ...}`` (multicolore).  Sinon, c'est une
+    chaîne de caractères classique.
     """
-    message = build_aircraft_message(plane_info)
-    if message is None:
-        return None
+    # Choisir le mode texte : segments colorés ou chaîne brute.
+    field_colors = _parse_field_colors()
+    if field_colors:
+        segments = build_colored_segments(plane_info)
+        if segments is None:
+            return None
+        text_payload: str | list[dict] = segments
+    else:
+        message = build_aircraft_message(plane_info)
+        if message is None:
+            return None
+        text_payload = message
+
     draw = build_draw_commands(plane_info)
     center_override = _get_text_center()
     center = center_override if center_override is not None else (not draw)
     payload: dict = {
-        "text": message,
+        "text": text_payload,
         "duration": DISPLAY_DURATION_S,
         "center": center,
     }
     if draw:
-        # Icône dessinée à gauche (8 px) -> texte décalé de 8 + 1 de marge.
         payload["textOffset"] = 9
         payload["draw"] = draw
     return payload
