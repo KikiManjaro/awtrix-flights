@@ -66,6 +66,12 @@ DEFAULT_PORT = 80  # port HTTP de l'API sur firmware 0.98 (7001 muet)
 
 REQUEST_TIMEOUT_S = 3.0  # ne jamais bloquer la boucle principale
 
+# ⚠️ FIRMWARE 0.98 : les commandes draw avec bitmap 8x8 (192 valeurs RGB)
+# font CRASHER les AWTRIX (reset ESP32). Désactivé par défaut pour la
+# fiabilité. Pour réactiver : ICON_ENABLED=true + AWTRIX_BEARING=126.
+# Si vous réactivez, testez d'abord avec UN SEUL envoi pour vérifier que
+# votre firmware le supporte.
+
 # Gabarit par défaut du message (compatible avec l'ancien format).
 DEFAULT_MESSAGE_TEMPLATE = "{callsign} {country} {altitude_m}m {speed_kmh}km/h"
 
@@ -118,10 +124,14 @@ def _get_template() -> str:
 
 
 def _get_icon_enabled() -> bool:
-    """L'icône orientée est-elle activée ? (ICON_ENABLED, défaut true)."""
+    """L'icône orientée est-elle activée ? (ICON_ENABLED, défaut false).
+
+    ⚠️ Firmware 0.98 : les draw avec bitmap 8x8 font crasher les AWTRIX.
+    Désactivé par défaut. Pour réactiver : ICON_ENABLED=true.
+    """
     raw = os.environ.get("ICON_ENABLED", "").strip().lower()
     if not raw:
-        return True
+        return False  # défaut = désactivé (sécurité firmware 0.98)
     return raw not in ("false", "0", "no", "off")
 
 

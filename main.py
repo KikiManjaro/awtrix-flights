@@ -36,7 +36,6 @@ import os
 import signal
 import sys
 import time
-
 import awtrix_client
 import flights
 import mqtt_client
@@ -47,6 +46,16 @@ DEFAULT_POLL_INTERVAL_S = 15.0
 DEFAULT_NOTIFY_COOLDOWN_S = 60.0
 MIN_POLL_INTERVAL_S = 1.0
 MIN_NOTIFY_COOLDOWN_S = 0.0
+# Nombre maximum d'avions affichés par cycle de polling. Au-delà, les
+# avions supplémentaires sont ignorés (cooldown marqué pour éviter le
+# spam au cycle suivant). Limite conçue pour ne pas surcharger l'ESP32
+# des AWTRIX avec trop de payloads draw en rafale.
+MAX_NOTIFY_PER_CYCLE = 3
+
+# Délai minimum (secondes) entre chaque envoi AWTRIX dans un même cycle.
+# Donne à l'ESP32 le temps de traiter le payload précédent (JSON parser +
+# rendu draw) avant de recevoir le suivant.
+SEND_DELAY_S = 0.5
 
 # Durée de rétention des entrées du tracker (nettoyage mémoire) : un avion
 # revu au-delà de cette fenêtre est considéré comme une nouvelle visite.
@@ -151,6 +160,7 @@ def run_once(
     sent = 0
     skipped_no_callsign = 0
     skipped_cooldown = 0
+    skipped_limit = 0
     for plane in aircraft:
         callsign = (plane.get("callsign") or "").strip()
         if not callsign:
@@ -167,8 +177,15 @@ def run_once(
                 int(tracker.remaining(callsign, now)),
             )
             continue
+        if sent >= MAX_NOTIFY_PER_CYCLE:
+            skipped_limit += 1
+            # Marquer le cooldown pour ne pas le revoir au cycle suivant
+            tracker.mark(callsign, now)
+            continue
         ok = notify(plane)
         tracker.mark(callsign, now)
+        if sent > 0:
+            time.sleep(SEND_DELAY_S)
         if ok:
             sent += 1
             speed_ms = plane.get("speed_ms")
@@ -203,10 +220,12 @@ def run_once(
             )
 
     logger.info(
-        "%d avion(s) dans la zone : %d affiché(s), %d ignoré(s) (cooldown), %d sans callsign.",
+        "%d avion(s) dans la zone : %d affiché(s), %d ignoré(s) (cooldown), %d ignoré(s) (limite %d), %d sans callsign.",
         len(aircraft),
         sent,
         skipped_cooldown,
+        skipped_limit,
+        MAX_NOTIFY_PER_CYCLE,
         skipped_no_callsign,
     )
     return sent
