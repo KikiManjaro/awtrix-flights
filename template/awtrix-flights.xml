@@ -54,5 +54,7 @@
   <Config Name="MQTT_USER" Target="MQTT_USER" Default="" Mode="" Description="MQTT username (optional)." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="MQTT_PASSWORD" Target="MQTT_PASSWORD" Default="" Mode="" Description="MQTT password (optional)." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
   <Config Name="MQTT_TOPIC_PREFIX" Target="MQTT_TOPIC_PREFIX" Default="awtrix-flights" Mode="" Description="MQTT topic prefix (topics: &lt;prefix&gt;/detection, &lt;prefix&gt;/status)." Type="Variable" Display="advanced" Required="false" Mask="false">awtrix-flights</Config>
+  <Config Name="AWTRIX_MQTT_ENABLED" Target="AWTRIX_MQTT_ENABLED" Default="false" Mode="" Description="Enable AWTRIX NG MQTT publishing (true/false) — publishes flight display directly to AWTRIX via MQTT on topics &lt;prefix&gt;/cmd/apps/pushed/avion." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="AWTRIX_MQTT_PREFIXES" Target="AWTRIX_MQTT_PREFIXES" Default="awtrix1,awtrix2" Mode="" Description="AWTRIX NG MQTT prefixes, comma-separated (e.g. awtrix1,awtrix2) — each maps to &lt;prefix&gt;/cmd/apps/pushed/avion." Type="Variable" Display="advanced" Required="false" Mask="false">awtrix1,awtrix2</Config>
   <Config Name="TZ" Target="TZ" Default="Europe/Paris" Mode="" Description="Timezone for logs." Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Paris</Config>
 </Container>

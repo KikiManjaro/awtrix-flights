@@ -557,14 +557,86 @@ def build_payload(plane_info: dict | None) -> dict | None:
     return payload
 
 
+def _is_awtrix_mqtt_enabled() -> bool:
+    """AWTRIX NG via MQTT activé ? (AWTRIX_MQTT_ENABLED, défaut false)."""
+    raw = os.environ.get("AWTRIX_MQTT_ENABLED", "").strip().lower()
+    if not raw:
+        return False
+    return raw not in ("false", "0", "no", "off")
+
+
+def _get_awtrix_mqtt_prefixes() -> list[str]:
+    """Préfixes MQTT des AWTRIX NG (AWTRIX_MQTT_PREFIXES, ex: awtrix1,awtrix2).
+
+    Si non défini mais AWTRIX_MQTT_ENABLED=true, déduit automatiquement
+    depuis AWTRIX_HOST : 192.168.1.27 -> awtrix1, 192.168.1.123 -> awtrix2.
+    """
+    raw = os.environ.get("AWTRIX_MQTT_PREFIXES", "").strip()
+    if raw:
+        return [p.strip().rstrip("/") for p in raw.split(",") if p.strip()]
+    if not _is_awtrix_mqtt_enabled():
+        return []
+    # Auto-déduction depuis AWTRIX_HOST pour les 2 écrans de Kylian
+    hosts = _get_hosts()
+    # Mapping connu : 192.168.1.27 = awtrix1, 192.168.1.123 = awtrix2
+    host_map = {"192.168.1.27": "awtrix1", "192.168.1.123": "awtrix2"}
+    prefixes = [host_map.get(h.strip(), f"awtrix{i+1}") for i, h in enumerate(hosts)]
+    return prefixes
+
+
+def notify_aircraft_mqtt(plane_info: dict | None) -> bool:
+    """Publie le payload AWTRIX via MQTT NG (best effort, jamais bloquant).
+
+    Publie le même payload que ``notify_aircraft`` (HTTP) mais sur les
+    topics MQTT AWTRIX NG : ``<prefix>/cmd/apps/pushed/avion`` pour chaque
+    préfixe dans AWTRIX_MQTT_PREFIXES. Utilise ``mqtt_client.publish`` qui
+    ne lève jamais d'exception.
+
+    Retourne True si au moins une publication a réussi, False sinon.
+    """
+    if not _is_awtrix_mqtt_enabled():
+        return False
+    prefixes = _get_awtrix_mqtt_prefixes()
+    if not prefixes:
+        logger.warning("AWTRIX MQTT activé mais AWTRIX_MQTT_PREFIXES vide")
+        return False
+    payload = build_payload(plane_info)
+    if payload is None:
+        logger.warning("notify_aircraft_mqtt: plane_info vide ou inexploitable")
+        return False
+    # Suffixe NG : /cmd/apps/pushed/avion (vérifié pour firmware AWTRIX NG)
+    suffix = "cmd/apps/pushed/avion"
+    # Fallback ancien topic custom/avion si AWTRIX_MQTT_SUFFIX est défini
+    suffix = os.environ.get("AWTRIX_MQTT_SUFFIX", suffix).strip() or suffix
+    try:
+        import mqtt_client as _mqtt  # import local pour éviter cycle
+    except ImportError as exc:
+        logger.warning("AWTRIX MQTT: mqtt_client indisponible : %s", exc)
+        return False
+    results = []
+    for prefix in prefixes:
+        topic = f"{prefix}/{suffix}"
+        ok = _mqtt.publish(topic, payload)
+        results.append(ok)
+        if ok:
+            logger.info("AWTRIX MQTT: publié sur %s", topic)
+        else:
+            logger.warning("AWTRIX MQTT: échec sur %s", topic)
+    return any(results)
+
+
 def notify_aircraft(plane_info: dict | None, timeout: float = REQUEST_TIMEOUT_S) -> bool:
-    """Affiche un avion détecté sur l'écran AWTRIX (tous les hôtes configurés).
+    """Affiche un avion détecté sur l'écran AWTRIX (HTTP + optionnellement MQTT NG).
 
     Construit le message personnalisé (callsign, pays/compagnie, altitude,
-    vitesse...) et l'icône avion orientée selon le cap, puis publie sur
-    l'app ``avion`` de chaque AWTRIX listé dans AWTRIX_HOST.
+    vitesse...) et l'icône avion orientée selon le cap, puis :
+      1. Publie via HTTP sur ``/api/custom?name=avion`` pour chaque hôte
+         dans AWTRIX_HOST (legacy, toujours actif).
+      2. Si ``AWTRIX_MQTT_ENABLED=true``, publie aussi via MQTT sur
+         ``<prefix>/cmd/apps/pushed/avion`` pour chaque préfixe dans
+         AWTRIX_MQTT_PREFIXES (AWTRIX NG).
 
-    Retourne True si au moins un écran a accepté le message, False sinon.
+    Retourne True si au moins un transport a réussi, False sinon.
     Ne lève JAMAIS d'exception (écran hors ligne, timeout, port fermé...).
     """
     payload = build_payload(plane_info)
@@ -574,8 +646,12 @@ def notify_aircraft(plane_info: dict | None, timeout: float = REQUEST_TIMEOUT_S)
     port = _get_port()
     hosts = _get_hosts()
     logger.info("AWTRIX: affichage de %r sur %s (port %s)", payload.get("text"), hosts, port)
-    results = [_send_to_host(host, port, payload, AWTRIX_APP_NAME, timeout) for host in hosts]
-    return any(results)
+    http_results = [_send_to_host(host, port, payload, AWTRIX_APP_NAME, timeout) for host in hosts]
+    http_ok = any(http_results)
+    mqtt_ok = False
+    if _is_awtrix_mqtt_enabled():
+        mqtt_ok = notify_aircraft_mqtt(plane_info)
+    return http_ok or mqtt_ok
 
 
 if __name__ == "__main__":
