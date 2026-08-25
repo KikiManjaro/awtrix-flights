@@ -140,6 +140,9 @@ class SpriteRotationTest(unittest.TestCase):
 
 
 class DrawCommandsTest(unittest.TestCase):
+    def setUp(self):
+        os.environ["ICON_ENABLED"] = "true"
+
     def tearDown(self):
         os.environ.pop("AWTRIX_BEARING", None)
         os.environ.pop("ICON_ENABLED", None)
@@ -186,8 +189,12 @@ class DrawCommandsTest(unittest.TestCase):
 
 
 class PayloadTest(unittest.TestCase):
+    def setUp(self):
+        os.environ["ICON_ENABLED"] = "true"
+
     def tearDown(self):
         os.environ.pop("TEXT_CENTER", None)
+        os.environ.pop("ICON_ENABLED", None)
 
     def test_payload_with_draw_has_text_offset(self):
         payload = build_payload(_plane(track=270))
