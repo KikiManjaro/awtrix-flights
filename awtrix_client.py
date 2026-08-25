@@ -94,9 +94,17 @@ _COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 
 # Clés de placeholders reconnus par le template MESSAGE_TEMPLATE.
 KNOWN_KEYS = {
-    "callsign", "country", "airline", "category",
-    "altitude_m", "altitude_ft", "speed_ms", "speed_kmh",
-    "distance_km", "track", "direction",
+    "callsign",
+    "country",
+    "airline",
+    "category",
+    "altitude_m",
+    "altitude_ft",
+    "speed_ms",
+    "speed_kmh",
+    "distance_km",
+    "track",
+    "direction",
 }
 
 
@@ -404,7 +412,6 @@ def build_colored_segments(
         # Mapping caractère par caractère : on garde tout sauf les espaces
         # redondants.  On travaille sur la concaténation des segments.
         result: list[dict] = []
-        pos = 0
         in_whitespace_run = False
         for seg in merged:
             seg_text = seg["t"]
@@ -580,7 +587,7 @@ def _get_awtrix_mqtt_prefixes() -> list[str]:
     hosts = _get_hosts()
     # Mapping connu : 192.168.1.27 = awtrix1, 192.168.1.123 = awtrix2
     host_map = {"192.168.1.27": "awtrix1", "192.168.1.123": "awtrix2"}
-    prefixes = [host_map.get(h.strip(), f"awtrix{i+1}") for i, h in enumerate(hosts)]
+    prefixes = [host_map.get(h.strip(), f"awtrix{i + 1}") for i, h in enumerate(hosts)]
     return prefixes
 
 

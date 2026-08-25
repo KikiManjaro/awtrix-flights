@@ -36,6 +36,7 @@ import os
 import signal
 import sys
 import time
+
 import awtrix_client
 import flights
 import mqtt_client
