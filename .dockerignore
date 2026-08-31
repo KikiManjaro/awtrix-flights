@@ -4,5 +4,12 @@
 !.env.example
 __pycache__/
 *.pyc
-test_*.py
+*.pyo
+.pytest_cache/
+.ruff_cache/
 .git
+.github/
+tests/
+*.md
+template/
+scripts/
