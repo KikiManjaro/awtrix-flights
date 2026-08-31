@@ -197,12 +197,16 @@ def run_once(
                     speed_kmh = None
             else:
                 speed_kmh = None
+            _alt = plane.get("altitude_m")
+            _alt_str = str(_alt) if _alt is not None else "?"
+            _dist = plane.get("distance_km")
+            _dist_str = f"{_dist:.2f}" if _dist is not None else "?"
             logger.info(
-                "DÉTECTION : %s %s à %sm, %.2f km, %s km/h -> affiché",
+                "DÉTECTION : %s %s à %sm, %s km, %s km/h -> affiché",
                 callsign,
                 plane.get("country") or "",
-                plane.get("altitude_m") or "?",
-                plane.get("distance_km") or "?",
+                _alt_str,
+                _dist_str,
                 speed_kmh if speed_kmh is not None else "?",
             )
             _publish_mqtt(
