@@ -18,6 +18,8 @@ Utilisation :
 Dépendances : uniquement la bibliothèque standard (urllib).
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import math
@@ -74,7 +76,7 @@ CATEGORY_NAMES = {
 }
 
 
-def category_name(category):
+def category_name(category: int | None) -> str | None:
     """Libellé lisible d'une catégorie OpenSky (ou None si inconnue)."""
     if category is None:
         return None
@@ -85,7 +87,7 @@ class OpenSkyError(Exception):
     """Erreur d'accès à l'API OpenSky (réseau, HTTP, limite de débit...)."""
 
 
-def haversine_km(lat1, lon1, lat2, lon2):
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Distance horizontale en km entre deux points (formule de Haversine)."""
     r_earth_km = 6371.0
     phi1 = math.radians(lat1)
@@ -96,7 +98,7 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return 2.0 * r_earth_km * math.asin(math.sqrt(a))
 
 
-def bounding_box(lat, lon, radius_km):
+def bounding_box(lat: float, lon: float, radius_km: float) -> tuple[float, float, float, float]:
     """Bounding box [lamin, lomin, lamax, lomax] autour de (lat, lon).
 
     Une marge de 20 % est ajoutée au rayon pour ne pas couper les avions
@@ -108,14 +110,14 @@ def bounding_box(lat, lon, radius_km):
     return (lat - dlat, lon - dlon, lat + dlat, lon + dlon)
 
 
-def _has_valid_position(lat, lon):
+def _has_valid_position(lat: float | None, lon: float | None) -> bool:
     """Vrai si la position est exploitable (non nulle)."""
     if lat is None or lon is None:
         return False
     return not (abs(lat) < 1e-6 and abs(lon) < 1e-6)
 
 
-def _field(state, idx):
+def _field(state: list, idx: int):
     """Accès sécurisé à un champ OpenSky.
 
     L'API renvoie des états de longueur variable (16 à 18 champs selon les
@@ -126,7 +128,7 @@ def _field(state, idx):
     return None
 
 
-def _altitude_m(state):
+def _altitude_m(state: list) -> float | None:
     """Altitude barométrique, sinon géométrique, sinon None."""
     baro = _field(state, _IDX_BARO_ALT)
     if baro is not None:
@@ -134,7 +136,7 @@ def _altitude_m(state):
     return _field(state, _IDX_GEO_ALT)
 
 
-def filter_aircraft(states, home_lat, home_lon, radius_km, min_alt_m):
+def filter_aircraft(states: list[list], home_lat: float, home_lon: float, radius_km: float, min_alt_m: float) -> list[dict]:
     """Filtre les états bruts OpenSky et construit la liste des avions.
 
     Ne garde que les avions avec une position non nulle, une distance
@@ -172,7 +174,7 @@ def filter_aircraft(states, home_lat, home_lon, radius_km, min_alt_m):
     return aircraft
 
 
-def _fetch_states(lamin, lomin, lamax, lomax):
+def _fetch_states(lamin: float, lomin: float, lamax: float, lomax: float) -> list[list]:
     """Interroge l'API OpenSky avec retry/backoff. Lève OpenSkyError en échec.
 
     Les erreurs réseau, les 5xx et le 429 (limite de débit) sont retentés
@@ -225,7 +227,7 @@ def _fetch_states(lamin, lomin, lamax, lomax):
     ) from last_error
 
 
-def get_aircraft_overhead():
+def get_aircraft_overhead() -> list[dict]:
     """Retourne la liste JSON-serializable des avions au-dessus de la maison.
 
     En cas d'API injoignable ou de limite de débit, journalise un message
@@ -242,8 +244,19 @@ def get_aircraft_overhead():
         home_lon = float(home_lon)
     except ValueError as exc:
         raise ValueError("HOME_LAT et HOME_LON doivent être des nombres décimaux.") from exc
-    radius_km = float(os.environ.get("RADIUS_KM", DEFAULT_RADIUS_KM))
-    min_alt_m = float(os.environ.get("MIN_ALT_M", DEFAULT_MIN_ALT_M))
+    if not -90 <= home_lat <= 90:
+        raise ValueError(f"HOME_LAT must be between -90 and 90 (got {home_lat}).")
+    if not -180 <= home_lon <= 180:
+        raise ValueError(f"HOME_LON must be between -180 and 180 (got {home_lon}).")
+    try:
+        radius_km = float(os.environ.get("RADIUS_KM", DEFAULT_RADIUS_KM))
+        min_alt_m = float(os.environ.get("MIN_ALT_M", DEFAULT_MIN_ALT_M))
+    except ValueError as exc:
+        raise ValueError(f"RADIUS_KM / MIN_ALT_M must be numeric: {exc}") from exc
+    if radius_km <= 0:
+        raise ValueError(f"RADIUS_KM must be > 0 (got {radius_km}).")
+    if min_alt_m < 0:
+        raise ValueError(f"MIN_ALT_M must be >= 0 (got {min_alt_m}).")
 
     lamin, lomin, lamax, lomax = bounding_box(home_lat, home_lon, radius_km)
     try:
