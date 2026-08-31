@@ -16,9 +16,19 @@ services:
     restart: unless-stopped
     # tini comme PID 1 : signaux propres (SIGTERM -> arrêt propre du service)
     init: true
+    # Hardening: pas de nouveaux privilèges, capabilities minimales
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     # Aucune écriture sur disque nécessaire -> système de fichiers en lecture seule
     read_only: true
-    tmpfs: /tmp
+    tmpfs:
+      - /tmp
     # Toutes les variables du service (HOME_LAT, HOME_LON, ...) :
     # copier .env.example -> .env puis ajuster
     env_file: .env
