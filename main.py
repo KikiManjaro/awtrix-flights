@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import os
+import pathlib
 import signal
 import sys
 import time
@@ -61,6 +62,17 @@ SEND_DELAY_S = 0.5
 # Durée de rétention des entrées du tracker (nettoyage mémoire) : un avion
 # revu au-delà de cette fenêtre est considéré comme une nouvelle visite.
 TRACKER_RETENTION_S = 10 * 60.0
+
+# Fichier heartbeat pour le HEALTHCHECK Docker (mis à jour chaque cycle).
+HEARTBEAT_FILE = os.environ.get("HEARTBEAT_FILE", "/tmp/awtrix-flights.heartbeat")
+
+
+def _touch_heartbeat() -> None:
+    """Met à jour le fichier heartbeat (best effort, jamais bloquant)."""
+    try:
+        pathlib.Path(HEARTBEAT_FILE).touch(exist_ok=True)
+    except OSError:
+        pass
 
 
 class CooldownTracker:
@@ -142,6 +154,7 @@ def run_once(
       (le service ne doit jamais mourir sur un pic de réseau).
     """
     now = time.time() if now is None else now
+    _touch_heartbeat()
 
     try:
         aircraft = get_aircraft()
@@ -298,6 +311,7 @@ def main() -> int:
     signal.signal(signal.SIGINT, _request_stop)
     signal.signal(signal.SIGTERM, _request_stop)
 
+    _touch_heartbeat()
     try:
         while True:
             run_once(tracker)

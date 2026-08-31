@@ -23,9 +23,14 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     TZ=Europe/Paris
 
-# L'application n'écrit aucun fichier : exécution non-root
-# (65534 = "nobody" standard Debian)
+# L'application n'écrit aucun fichier métier : exécution non-root
+# (65534 = "nobody" standard Debian). Le heartbeat est écrit dans /tmp
+# (tmpfs en compose) et reste accessible au HEALTHCHECK.
 USER 65534:65534
+
+# Vérifie que la boucle principale est vivante (heartbeat mis à jour chaque cycle).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python3 -c "import pathlib, time, sys; p=pathlib.Path('/tmp/awtrix-flights.heartbeat'); sys.exit(0 if p.exists() and time.time()-p.stat().st_mtime<90 else 1)"
 
 # Démarrage du service : boucle infinie de détection
 CMD ["python3", "main.py"]
