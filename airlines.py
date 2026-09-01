@@ -79,6 +79,8 @@ DEFAULT_AIRLINES: dict[str, str] = {
 
 # Cache : {"AFR": "Air France"} fusionné (personnalisé > par défaut).
 _airlines_cache: dict[str, str] | None = None
+_airlines_lock = __import__("threading").Lock()
+_MAX_AIRLINES_FILE_BYTES = 1_048_576  # 1 MB guard against DoS via huge file
 
 
 def _load_airlines() -> dict[str, str]:
@@ -86,25 +88,37 @@ def _load_airlines() -> dict[str, str]:
     global _airlines_cache
     if _airlines_cache is not None:
         return _airlines_cache
+    with _airlines_lock:
+        if _airlines_cache is not None:
+            return _airlines_cache
+        table = dict(DEFAULT_AIRLINES)
+        custom_path = os.environ.get("AIRLINES_FILE", "").strip()
+        if custom_path:
+            try:
+                size = __import__("os").path.getsize(custom_path)
+                if size > _MAX_AIRLINES_FILE_BYTES:
+                    logger.warning("AIRLINES_FILE trop volumineux (%d octets), ignoré", size)
+                else:
+                    with open(custom_path, encoding="utf-8") as fh:
+                        custom = json.load(fh)
+                    if isinstance(custom, dict):
+                        table.update({str(k).upper(): str(v) for k, v in custom.items()})
+                        logger.info("Table compagnies personnalisée chargée : %s", custom_path)
+                    else:
+                        logger.warning("AIRLINES_FILE doit être un objet JSON, ignoré")
+            except OSError as exc:
+                logger.warning("AIRLINES_FILE illisible (%s) : %s", custom_path, exc)
+            except ValueError as exc:
+                logger.warning("AIRLINES_FILE JSON invalide (%s) : %s", custom_path, exc)
+        _airlines_cache = table
+        return table
 
-    table = dict(DEFAULT_AIRLINES)
-    custom_path = os.environ.get("AIRLINES_FILE", "").strip()
-    if custom_path:
-        try:
-            with open(custom_path, encoding="utf-8") as fh:
-                custom = json.load(fh)
-            if isinstance(custom, dict):
-                table.update({str(k).upper(): str(v) for k, v in custom.items()})
-                logger.info("Table compagnies personnalisée chargée : %s", custom_path)
-            else:
-                logger.warning("AIRLINES_FILE doit être un objet JSON, ignoré")
-        except OSError as exc:
-            logger.warning("AIRLINES_FILE illisible (%s) : %s", custom_path, exc)
-        except ValueError as exc:
-            logger.warning("AIRLINES_FILE JSON invalide (%s) : %s", custom_path, exc)
 
-    _airlines_cache = table
-    return table
+def clear_airlines_cache() -> None:
+    """Réinitialise le cache (utile pour les tests)."""
+    global _airlines_cache
+    with _airlines_lock:
+        _airlines_cache = None
 
 
 def airline_for_callsign(callsign: str | None) -> str | None:

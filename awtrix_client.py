@@ -491,11 +491,33 @@ def build_draw_commands(plane_info: dict | None) -> list[dict]:
     return [{"db": [0, 0, 8, 8, colors]}]
 
 
+_MAX_PAYLOAD_BYTES = 8192  # AWTRIX ESP32 guard
+
+
+def _sanitize_app_name(name: str) -> str:
+    """Nettoie le nom d'app pour éviter l'injection dans l'URL."""
+    import urllib.parse as _up
+    # Alphanumerics, dash, underscore only
+    safe = "".join(c for c in name if c.isalnum() or c in ("-", "_"))
+    return _up.quote(safe[:32] or "avion", safe="")
+
+
 def _send_to_host(
     host: str, port: int, payload: dict, app_name: str, timeout: float = REQUEST_TIMEOUT_S
 ) -> bool:
     """POST du payload vers un seul AWTRIX. True si réponse 2xx, sinon False."""
-    url = f"http://{host}:{port}/api/custom?name={app_name}"
+    if "\n" in host or "\r" in host or " " in host:
+        logger.warning("AWTRIX %s: hôte invalide (caractères interdits)", host[:80])
+        return False
+    # Guard payload size before serializing to avoid OOM on ESP32
+    try:
+        _preview = json.dumps(payload).encode("utf-8")
+        if len(_preview) > _MAX_PAYLOAD_BYTES:
+            logger.warning("AWTRIX %s: payload trop volumineux (%d > %d), rejeté", host, len(_preview), _MAX_PAYLOAD_BYTES)
+            return False
+    except Exception:
+        pass
+    url = f"http://{host}:{port}/api/custom?name={_sanitize_app_name(app_name)}"
     body = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         url,

@@ -102,6 +102,7 @@ def bounding_box(lat, lon, radius_km):
     Une marge de 20 % est ajoutée au rayon pour ne pas couper les avions
     proches du bord du cercle (le filtre Haversine s'applique ensuite).
     """
+    radius_km = max(0.1, min(radius_km, 100.0))
     margin = radius_km * 1.2
     dlat = margin / 111.32  # 1 degré de latitude ≈ 111,32 km
     dlon = margin / (111.32 * max(math.cos(math.radians(lat)), 0.01))
@@ -202,9 +203,11 @@ def _fetch_states(lamin, lomin, lamax, lomax):
                     "OpenSky : limite de débit atteinte (HTTP 429). Réessai après backoff."
                 )
                 retry_after = exc.headers.get("Retry-After")
-                delay = (
-                    float(retry_after) if retry_after else BACKOFF_BASE_S * (2 ** (attempt - 1))
-                )
+                try:
+                    delay = float(retry_after) if retry_after else BACKOFF_BASE_S * (2 ** (attempt - 1))
+                except (TypeError, ValueError):
+                    delay = BACKOFF_BASE_S * (2 ** (attempt - 1))
+                delay = min(delay, 60.0)
             elif exc.code >= 500:
                 delay = BACKOFF_BASE_S * (2 ** (attempt - 1))
             else:
@@ -242,8 +245,23 @@ def get_aircraft_overhead():
         home_lon = float(home_lon)
     except ValueError as exc:
         raise ValueError("HOME_LAT et HOME_LON doivent être des nombres décimaux.") from exc
-    radius_km = float(os.environ.get("RADIUS_KM", DEFAULT_RADIUS_KM))
-    min_alt_m = float(os.environ.get("MIN_ALT_M", DEFAULT_MIN_ALT_M))
+    if not math.isfinite(home_lat) or not math.isfinite(home_lon):
+        raise ValueError("HOME_LAT et HOME_LON doivent être des nombres finis.")
+    if not -90 <= home_lat <= 90:
+        raise ValueError(f"HOME_LAT doit être entre -90 et 90 (reçu {home_lat}).")
+    if not -180 <= home_lon <= 180:
+        raise ValueError(f"HOME_LON doit être entre -180 et 180 (reçu {home_lon}).")
+    try:
+        radius_km = float(os.environ.get("RADIUS_KM", DEFAULT_RADIUS_KM))
+        min_alt_m = float(os.environ.get("MIN_ALT_M", DEFAULT_MIN_ALT_M))
+    except ValueError as exc:
+        raise ValueError(f"RADIUS_KM / MIN_ALT_M doivent être des nombres : {exc}") from exc
+    if not math.isfinite(radius_km) or not math.isfinite(min_alt_m):
+        raise ValueError("RADIUS_KM et MIN_ALT_M doivent être des nombres finis.")
+    if not 0.1 <= radius_km <= 100:
+        raise ValueError(f"RADIUS_KM doit être entre 0.1 et 100 km (reçu {radius_km}).")
+    if not 0 <= min_alt_m <= 15000:
+        raise ValueError(f"MIN_ALT_M doit être entre 0 et 15000 m (reçu {min_alt_m}).")
 
     lamin, lomin, lamax, lomax = bounding_box(home_lat, home_lon, radius_km)
     try:
