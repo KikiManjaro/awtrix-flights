@@ -80,6 +80,8 @@ def _encode_utf8(text: str) -> bytes:
 
 def _remaining_length(payload: bytes) -> bytes:
     """Encodage de la longueur restante (1 à 4 octets, variable length)."""
+    if len(payload) > 268435455:
+        raise MqttError("payload trop grand pour MQTT (max 256 MB)")
     out = bytearray()
     value = len(payload)
     while True:
@@ -158,6 +160,21 @@ def _publish(sock: socket.socket, topic: str, payload: bytes) -> None:
     sock.sendall(packet)
 
 
+_MAX_TOPIC_LEN = 256
+_MAX_PAYLOAD_BYTES = 64 * 1024  # 64 KB guard
+
+
+def _validate_topic(topic: str) -> str | None:
+    """Retourne un message d'erreur si le topic est invalide, sinon None."""
+    if not topic or len(topic) > _MAX_TOPIC_LEN:
+        return f"topic invalide (longueur 1-{_MAX_TOPIC_LEN})"
+    if any(c in topic for c in ("\n", "\r", "\x00")):
+        return "topic contient des caractères de contrôle interdits"
+    if "#" in topic or "+" in topic:
+        return "topic ne doit pas contenir de wildcards MQTT (#/+)"
+    return None
+
+
 def publish(
     topic: str | None = None,
     payload: str | dict | bytes = "",
@@ -174,6 +191,10 @@ def publish(
     Retourne True si la publication a abouti, False sinon (jamais d'exception).
     """
     topic = (topic or os.environ.get("MQTT_TOPIC", "")).strip() or "awtrix-flights/detection"
+    err = _validate_topic(topic)
+    if err:
+        logger.warning("MQTT: %s : %r", err, topic[:80])
+        return False
     cfg = _config()
     cfg.update({k: v for k, v in overrides.items() if v is not None})
 
@@ -183,6 +204,9 @@ def publish(
         body = payload.encode("utf-8")
     else:
         body = payload
+    if len(body) > _MAX_PAYLOAD_BYTES:
+        logger.warning("MQTT: payload trop volumineux (%d > %d octets), rejeté", len(body), _MAX_PAYLOAD_BYTES)
+        return False
 
     sock = None
     try:
