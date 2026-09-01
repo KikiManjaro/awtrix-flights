@@ -17,6 +17,15 @@ Configuration (variables d'environnement) :
     NOTIFY_COOLDOWN_SEC délai minimal entre 2 affichages du même callsign
                         (défaut 60) -- évite le spam quand un avion reste
                         dans la zone plusieurs cycles de suite.
+    LOG_LEVEL           niveau de log : DEBUG/INFO/WARNING/ERROR (défaut INFO)
+    LOG_FORMAT          format de log : text (défaut) ou json
+    DRY_RUN             si true, n'envoie rien (équivalent --dry-run)
+
+CLI :
+    --dry-run           n'envoie rien à l'AWTRIX, affiche ce qui serait envoyé
+    --once              exécute un seul cycle puis s'arrête (utile pour CI/cron)
+    --validate-config   valide la configuration et s'arrête (code 0 ok, 2 erreur)
+    --log-level LEVEL   surcharge LOG_LEVEL pour ce lancement
 
 Comportement :
     - Interrogation immédiate au démarrage, puis toutes les POLL_INTERVAL_SEC.
@@ -31,6 +40,8 @@ Dépendances : uniquement la bibliothèque standard.
 
 from __future__ import annotations
 
+import argparse
+import json
 import logging
 import os
 import signal
@@ -61,6 +72,72 @@ SEND_DELAY_S = 0.5
 # Durée de rétention des entrées du tracker (nettoyage mémoire) : un avion
 # revu au-delà de cette fenêtre est considéré comme une nouvelle visite.
 TRACKER_RETENTION_S = 10 * 60.0
+
+_LOG_LEVELS = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "WARN": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
+
+
+class JsonFormatter(logging.Formatter):
+    """Formateur JSON minimaliste (une ligne JSON par log)."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "time": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info and record.exc_info[0] is not None:
+            payload["exc_info"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False)
+
+
+def _resolve_log_level(raw: str | None) -> int | None:
+    if not raw:
+        return None
+    return _LOG_LEVELS.get(raw.strip().upper())
+
+
+def _setup_logging(cli_level: str | None = None, json_logs: bool | None = None) -> None:
+    env_level_raw = os.environ.get("LOG_LEVEL", "").strip()
+    level = _resolve_log_level(cli_level) if cli_level else _resolve_log_level(env_level_raw)
+    if level is None:
+        if cli_level and cli_level.strip().upper() not in _LOG_LEVELS:
+            print(f"Invalid --log-level {cli_level!r}, using INFO", file=sys.stderr)
+        elif env_level_raw and env_level_raw.upper() not in _LOG_LEVELS:
+            print(f"Invalid LOG_LEVEL {env_level_raw!r}, using INFO", file=sys.stderr)
+        level = logging.INFO
+    use_json = json_logs
+    if use_json is None:
+        use_json = os.environ.get("LOG_FORMAT", "").strip().lower() == "json"
+    handler = logging.StreamHandler()
+    if use_json:
+        handler.setFormatter(JsonFormatter())
+    else:
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.addHandler(handler)
+    root.setLevel(level)
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="awtrix-flights",
+        description="Affiche les avions au-dessus de la maison sur AWTRIX 3 (OpenSky Network).",
+    )
+    p.add_argument("--dry-run", action="store_true", help="n'envoie rien, affiche ce qui serait envoyé et quitte")
+    p.add_argument("--once", action="store_true", help="exécute un seul cycle de polling puis s'arrête")
+    p.add_argument("--validate-config", action="store_true", help="valide HOME_LAT/HOME_LON et les intervalles puis quitte (0 ok, 2 erreur)")
+    p.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="niveau de log pour ce lancement")
+    p.add_argument("--json-logs", action="store_true", help="logs au format JSON (une ligne par événement)")
+    return p
 
 
 class CooldownTracker:
@@ -125,11 +202,25 @@ def _publish_mqtt(event: str, payload: dict) -> None:
     mqtt_client.publish(f"{topic}/{event}", payload)
 
 
+def _validate_base_config() -> tuple[float, float]:
+    if not (os.environ.get("HOME_LAT") and os.environ.get("HOME_LON")):
+        raise ValueError("HOME_LAT et HOME_LON sont obligatoires (voir le README).")
+    poll = _parse_float_env("POLL_INTERVAL_SEC", DEFAULT_POLL_INTERVAL_S, MIN_POLL_INTERVAL_S)
+    cd = _parse_float_env("NOTIFY_COOLDOWN_SEC", DEFAULT_NOTIFY_COOLDOWN_S, MIN_NOTIFY_COOLDOWN_S)
+    try:
+        float(os.environ["HOME_LAT"])
+        float(os.environ["HOME_LON"])
+    except ValueError:
+        raise ValueError("HOME_LAT et HOME_LON doivent être des nombres décimaux.") from None
+    return poll, cd
+
+
 def run_once(
     tracker: CooldownTracker,
-    get_aircraft=flights.get_aircraft_overhead,
-    notify=awtrix_client.notify_aircraft,
+    get_aircraft=None,
+    notify=None,
     now: float | None = None,
+    dry_run: bool = False,
 ) -> int:
     """Un cycle complet : interrogation OpenSky puis notifications AWTRIX.
 
@@ -140,7 +231,13 @@ def run_once(
       vers main() qui stoppe proprement le service.
     - Toute autre exception inattendue est journalisée et le cycle continue
       (le service ne doit jamais mourir sur un pic de réseau).
+    - Si ``dry_run`` est True, n'appelle jamais ``notify`` : affiche le
+      payload qui serait envoyé et compte comme ``sent``.
     """
+    if get_aircraft is None:
+        get_aircraft = flights.get_aircraft_overhead
+    if notify is None:
+        notify = awtrix_client.notify_aircraft
     now = time.time() if now is None else now
 
     try:
@@ -182,6 +279,12 @@ def run_once(
             skipped_limit += 1
             # Marquer le cooldown pour ne pas le revoir au cycle suivant
             tracker.mark(callsign, now)
+            continue
+        if dry_run:
+            payload = awtrix_client.build_payload(plane)
+            print(f"[dry-run] would notify {callsign}: {json.dumps(payload, ensure_ascii=False)}")
+            tracker.mark(callsign, now)
+            sent += 1
             continue
         ok = notify(plane)
         tracker.mark(callsign, now)
@@ -246,10 +349,26 @@ def _parse_float_env(name: str, default: float, minimum: float) -> float:
     return value
 
 
-def main() -> int:
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(argv if argv is not None else [])
+    env_dry_run = os.environ.get("DRY_RUN", "").strip().lower() not in ("", "false", "0", "no", "off")
+    dry_run = args.dry_run or env_dry_run
+    _setup_logging(cli_level=args.log_level, json_logs=args.json_logs or None)
+    if args.validate_config:
+        try:
+            _validate_base_config()
+            lat = float(os.environ.get("HOME_LAT", ""))
+            lon = float(os.environ.get("HOME_LON", ""))
+            if not -90 <= lat <= 90:
+                raise ValueError(f"HOME_LAT must be between -90 and 90 (got {lat}).")
+            if not -180 <= lon <= 180:
+                raise ValueError(f"HOME_LON must be between -180 and 180 (got {lon}).")
+            print("Configuration OK")
+            return 0
+        except ValueError as exc:
+            print(f"Configuration invalide : {exc}", file=sys.stderr)
+            return 2
 
     if not (os.environ.get("HOME_LAT") and os.environ.get("HOME_LON")):
         logger.error(
@@ -274,9 +393,15 @@ def main() -> int:
     min_alt = os.environ.get("MIN_ALT_M")
     radius_label = f"{radius} km" if radius else "5 km (défaut)"
     min_alt_label = f"{min_alt} m" if min_alt else "300 m (défaut)"
+    mode_label = ""
+    if dry_run:
+        mode_label = " [dry-run]"
+    elif args.once:
+        mode_label = " [once]"
     logger.info(
-        "Surveillance des avions démarrée : lat=%s lon=%s "
+        "Surveillance des avions démarrée%s : lat=%s lon=%s "
         "rayon=%s alt_min=%s, poll=%ss, cooldown=%ss, AWTRIX=%s",
+        mode_label,
         os.environ.get("HOME_LAT"),
         os.environ.get("HOME_LON"),
         radius_label,
@@ -286,10 +411,11 @@ def main() -> int:
         awtrix_host,
     )
 
-    _publish_mqtt(
-        "status",
-        {"state": "online", "started_at": int(time.time())},
-    )
+    if not dry_run:
+        _publish_mqtt(
+            "status",
+            {"state": "online", "started_at": int(time.time())},
+        )
 
     # Ctrl-C (SIGINT) et SIGTERM (docker stop, systemd stop) -> arrêt propre.
     def _request_stop(signum, frame):  # noqa: ARG001
@@ -298,16 +424,27 @@ def main() -> int:
     signal.signal(signal.SIGINT, _request_stop)
     signal.signal(signal.SIGTERM, _request_stop)
 
+    if args.once or dry_run:
+        try:
+            n = run_once(tracker, dry_run=dry_run)
+            if dry_run:
+                print(f"[dry-run] cycle terminé : {n} notification(s) aurait(aient) été envoyée(s)")
+            return 0
+        except ValueError as exc:
+            logger.error("Configuration invalide : %s", exc)
+            return 2
+
     try:
         while True:
             run_once(tracker)
             time.sleep(poll_interval)
     except KeyboardInterrupt:
         logger.info("Arrêt demandé (Ctrl-C / SIGTERM), sortie propre.")
-        _publish_mqtt(
-            "status",
-            {"state": "offline", "stopped_at": int(time.time())},
-        )
+        if not dry_run:
+            _publish_mqtt(
+                "status",
+                {"state": "offline", "stopped_at": int(time.time())},
+            )
         return 0
     except ValueError as exc:
         logger.error("Configuration invalide : %s", exc)
@@ -315,4 +452,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
