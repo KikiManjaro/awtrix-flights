@@ -18,6 +18,7 @@ Utilisation :
 Dépendances : uniquement la bibliothèque standard (urllib).
 """
 
+import email.utils
 import json
 import logging
 import math
@@ -172,6 +173,42 @@ def filter_aircraft(states, home_lat, home_lon, radius_km, min_alt_m):
     return aircraft
 
 
+def _parse_retry_after(value: str | None, fallback: float) -> float:
+    """Parse Retry-After header robustly (delta-seconds or HTTP-date).
+
+    - delta-seconds : valeur numérique directe.
+    - HTTP-date     : date RFC 7231, convertie en délai.
+    Retourne *fallback* si la valeur est absente, invalide ou mal formée.
+    Le résultat est borné à [0, 60] s pour éviter un sleep excessif dans
+    le retry loop.
+    """
+    if not value:
+        return fallback
+    value = value.strip()
+    # delta-seconds path
+    try:
+        delay = float(value)
+        if delay < 0:
+            return fallback
+        return min(delay, 60.0)
+    except ValueError:
+        pass
+    # HTTP-date path
+    try:
+        retry_ts = email.utils.parsedate_to_datetime(value)
+        if retry_ts is not None:
+            # parsedate_to_datetime may return naive dt for some formats
+            now_ts = time.time()
+            dt_ts = retry_ts.timestamp()
+            delay = dt_ts - now_ts
+            if delay < 0:
+                return fallback
+            return min(delay, 60.0)
+    except Exception:
+        pass
+    return fallback
+
+
 def _fetch_states(lamin, lomin, lamax, lomax):
     """Interroge l'API OpenSky avec retry/backoff. Lève OpenSkyError en échec.
 
@@ -201,10 +238,8 @@ def _fetch_states(lamin, lomin, lamax, lomax):
                 logger.warning(
                     "OpenSky : limite de débit atteinte (HTTP 429). Réessai après backoff."
                 )
-                retry_after = exc.headers.get("Retry-After")
-                delay = (
-                    float(retry_after) if retry_after else BACKOFF_BASE_S * (2 ** (attempt - 1))
-                )
+                backoff = BACKOFF_BASE_S * (2 ** (attempt - 1))
+                delay = _parse_retry_after(exc.headers.get("Retry-After"), backoff)
             elif exc.code >= 500:
                 delay = BACKOFF_BASE_S * (2 ** (attempt - 1))
             else:
