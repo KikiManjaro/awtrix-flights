@@ -19,6 +19,7 @@ Chaque avion détecté dans le rayon configuré est affiché avec son callsign, 
 - **Filtrage géographique** : rayon configurable autour de votre maison (Haversine) + altitude minimale
 - **Affichage personnalisable** : gabarit de message libre (`MESSAGE_TEMPLATE`) avec placeholders
 - **Icône avion orientée** : le sprite 8×8 tourne selon le cap de l'avion (prise en compte de l'orientation de votre écran via `AWTRIX_BEARING`)
+- **Alertes squawk d'urgence** : un avion qui transmet 7500 (détournement), 7600 (panne radio) ou 7700 (urgence) est *toujours* affiché — il ignore le cooldown anti-spam et la limite par cycle, avec icône rouge et préfixe dans le message
 - **Nom de compagnie** : résolution du préfixe ICAO du callsign (ex. `AFR123` → Air France), table personnalisable
 - **Catégorie d'avion** : libellé OpenSky (gros porteur, hélicoptère, drone...)
 - **MQTT** : publie les détections sur votre broker (Mosquitto, EMQX...) pour intégration domotique
@@ -70,6 +71,8 @@ docker run -d \
 | `ICON_ENABLED` | Icône avion orientée (`true`/`false`) | `true` |
 | `ICON_COLOR` | Couleur RGB de l'icône (`255,170,0`) | `255,170,0` |
 | `AWTRIX_BEARING` | Orientation de l'écran en degrés (voir ci-dessous) | `0` |
+| `EMERGENCY_PREFIX` | Texte ajouté devant le message d'un avion en détresse (`""` désactive) | `EMERG ` |
+| `EMERGENCY_ICON_COLOR` | Couleur RGB de l'icône d'un avion en détresse | `255,0,0` |
 | `AIRLINES_FILE` | Fichier JSON de compagnies personnalisées | — |
 
 ### Placeholders du gabarit (`MESSAGE_TEMPLATE`)
@@ -87,6 +90,8 @@ docker run -d \
 | `{distance_km}` | Distance horizontale | `1.2` |
 | `{track}` | Cap en degrés | `273` |
 | `{direction}` | Direction cardinale | `W` |
+| `{squawk}` | Code transpondeur (4 chiffres) | `7700` |
+| `{emergency}` | Nature de l'urgence, vide sinon | `EMERGENCY` |
 
 Exemples de gabarits :
 
@@ -97,6 +102,26 @@ MESSAGE_TEMPLATE={callsign} {airline} {direction} {altitude_ft}ft
 
 # Minimaliste
 MESSAGE_TEMPLATE={callsign} {altitude_m}m
+```
+
+### 🚨 Alertes squawk d'urgence (7500 / 7600 / 7700)
+
+Un code transpondeur `7500` (détournement), `7600` (panne radio) ou `7700`
+(urgence générale) est une alerte, pas un vol ordinaire. Ces avions sont
+traités en priorité :
+
+- ils sont **toujours affichés**, même dans la fenêtre `NOTIFY_COOLDOWN_SEC` et
+  même si `MAX_NOTIFY_PER_CYCLE` avions ont déjà été montrés dans le cycle ;
+- le message reçoit un préfixe (`EMERGENCY_PREFIX`, défaut `EMERG `) et
+  l'icône avion devient rouge (`EMERGENCY_ICON_COLOR`, défaut `255,0,0`) ;
+- la détection est journalisée en `WARNING` et le payload MQTT porte
+  `"emergency": true` (avec le champ `squawk`), pour les automatisations ;
+- un avion qui abandonne son squawk d'urgence retombe dans le cooldown normal.
+
+```
+MESSAGE_TEMPLATE="{callsign} {squawk} {emergency}"
+# avion normal   -> "AFR123 1000"
+# en urgence     -> "EMERG AFR123 7700 EMERGENCY"
 ```
 
 ### 🧭 Orientation de l'écran (`AWTRIX_BEARING`)

@@ -17,6 +17,7 @@ Every aircraft detected within the configured radius is shown with its callsign,
 - **Geographic filtering**: configurable radius around your home (Haversine) + minimum altitude
 - **Customizable display**: free-form message template (`MESSAGE_TEMPLATE`) with placeholders
 - **Heading-oriented icon**: the 8×8 plane sprite rotates with the aircraft's true track (screen orientation handled via `AWTRIX_BEARING`)
+- **Emergency squawk alerts**: an aircraft squawking 7500 (hijack), 7600 (radio failure) or 7700 (emergency) is *always* displayed — it bypasses the anti-spam cooldown and the per-cycle limit, with a red icon and a message prefix
 - **Airline name**: ICAO callsign prefix resolution (e.g. `AFR123` → Air France), customizable table
 - **Aircraft category**: OpenSky label (heavy, helicopter, drone...)
 - **MQTT**: publishes detections to your broker (Mosquitto, EMQX...) for home-automation integration
@@ -68,6 +69,8 @@ docker run -d \
 | `ICON_ENABLED` | Heading-oriented plane icon (`true`/`false`) | `true` |
 | `ICON_COLOR` | Icon RGB color (`255,170,0`) | `255,170,0` |
 | `AWTRIX_BEARING` | Screen orientation in degrees (see below) | `0` |
+| `EMERGENCY_PREFIX` | Text prepended to the message of an aircraft in distress (`""` disables it) | `EMERG ` |
+| `EMERGENCY_ICON_COLOR` | Icon RGB color for an aircraft in distress | `255,0,0` |
 | `AIRLINES_FILE` | Custom airlines JSON file | — |
 
 ### Template placeholders (`MESSAGE_TEMPLATE`)
@@ -85,6 +88,8 @@ docker run -d \
 | `{distance_km}` | Horizontal distance | `1.2` |
 | `{track}` | Heading in degrees | `273` |
 | `{direction}` | Cardinal direction | `W` |
+| `{squawk}` | Transponder code (4 digits) | `7700` |
+| `{emergency}` | Emergency nature, empty if none | `EMERGENCY` |
 
 Example templates:
 
@@ -95,6 +100,27 @@ MESSAGE_TEMPLATE={callsign} {airline} {direction} {altitude_ft}ft
 
 # Minimal
 MESSAGE_TEMPLATE={callsign} {altitude_m}m
+```
+
+### 🚨 Emergency squawk alerts (7500 / 7600 / 7700)
+
+A transponder code of `7500` (hijack), `7600` (radio failure) or `7700`
+(general emergency) is an alert, not a normal flight. Such an aircraft is
+handled with priority:
+
+- it is **always displayed**, even inside the `NOTIFY_COOLDOWN_SEC` window and
+  even when `MAX_NOTIFY_PER_CYCLE` aircraft were already shown in that cycle;
+- the message gets a prefix (`EMERGENCY_PREFIX`, default `EMERG `) and the
+  plane icon turns red (`EMERGENCY_ICON_COLOR`, default `255,0,0`);
+- the detection is logged at `WARNING` level and the MQTT payload carries
+  `"emergency": true` (plus the `squawk` field), so home automation can react;
+- an aircraft that clears its emergency squawk falls back to the normal
+  anti-spam cooldown.
+
+```
+MESSAGE_TEMPLATE="{callsign} {squawk} {emergency}"
+# normal aircraft  -> "AFR123 1000"
+# emergency        -> "EMERG AFR123 7700 EMERGENCY"
 ```
 
 ### 🧭 Screen orientation (`AWTRIX_BEARING`)

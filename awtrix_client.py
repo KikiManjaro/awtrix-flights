@@ -16,11 +16,16 @@ Configuration (variables d'environnement) :
     MESSAGE_TEMPLATE -- gabarit du message affiché. Placeholders disponibles :
                         {callsign} {country} {airline} {category} {altitude_m}
                         {altitude_ft} {speed_ms} {speed_kmh} {distance_km}
-                        {track} {direction} — les champs inconnus/vides sont
-                        omis proprement (espaces nettoyés).
+                        {track} {direction} {squawk} {emergency} — les champs
+                        inconnus/vides sont omis proprement (espaces nettoyés).
                         Défaut: "{callsign} {country} {altitude_m}m {speed_kmh}km/h"
     ICON_ENABLED     -- "true"/"false" : affiche l'icône avion orientée (défaut: true)
     ICON_COLOR       -- couleur RGB de l'icône, "R,G,B" (défaut: 255,170,0)
+    EMERGENCY_PREFIX -- texte ajouté devant le message d'un avion en détresse
+                        (squawk 7500/7600/7700), "" pour désactiver
+                        (défaut: "EMERG ")
+    EMERGENCY_ICON_COLOR -- couleur RGB de l'icône pour un avion en détresse
+                        (défaut: 255,0,0 rouge)
     AWTRIX_BEARING   -- orientation de l'ÉCRAN : rotation en degrés du haut de
                         l'écran par rapport au nord (0 = haut = nord, 90 = haut
                         = est...). L'icône est tournée de track - bearing.
@@ -105,7 +110,16 @@ KNOWN_KEYS = {
     "distance_km",
     "track",
     "direction",
+    "squawk",
+    "emergency",
 }
+
+# Préfixe par défaut des messages d'avion en détresse (EMERGENCY_PREFIX).
+DEFAULT_EMERGENCY_PREFIX = "EMERG "
+# Couleur par défaut de l'icône d'un avion en détresse (EMERGENCY_ICON_COLOR).
+DEFAULT_EMERGENCY_ICON_COLOR = [255, 0, 0]
+# Couleur du segment de texte d'alerte en mode multicolore (FIELD_COLORS).
+EMERGENCY_TEXT_COLOR = "#FF0000"
 
 
 def _get_hosts() -> list[str]:
@@ -150,17 +164,54 @@ def _get_icon_enabled() -> bool:
     return raw not in ("false", "0", "no", "off")
 
 
-def _get_icon_color() -> list[int]:
-    """Couleur RGB de l'icône (ICON_COLOR "R,G,B", défaut orange ambre)."""
-    raw = os.environ.get("ICON_COLOR", "").strip()
+def _parse_rgb(raw: str, default: list[int], name: str) -> list[int]:
+    """Parse une couleur ``"R,G,B"`` (bornée 0-255), *default* si invalide."""
     if raw:
         parts = [p.strip() for p in raw.split(",")]
         if len(parts) == 3:
             try:
                 return [max(0, min(255, int(p))) for p in parts]
             except ValueError:
-                logger.warning("ICON_COLOR invalide (%r), défaut utilisé", raw)
-    return [255, 170, 0]
+                logger.warning("%s invalide (%r), défaut utilisé", name, raw)
+    return list(default)
+
+
+def _get_icon_color() -> list[int]:
+    """Couleur RGB de l'icône (ICON_COLOR "R,G,B", défaut orange ambre)."""
+    return _parse_rgb(os.environ.get("ICON_COLOR", "").strip(), [255, 170, 0], "ICON_COLOR")
+
+
+def _get_emergency_icon_color() -> list[int]:
+    """Couleur RGB de l'icône d'un avion en détresse (EMERGENCY_ICON_COLOR).
+
+    Défaut : rouge (255,0,0) — bien plus visible qu'un avion ordinaire pour
+    signaler un squawk 7500/7600/7700.
+    """
+    return _parse_rgb(
+        os.environ.get("EMERGENCY_ICON_COLOR", "").strip(),
+        DEFAULT_EMERGENCY_ICON_COLOR,
+        "EMERGENCY_ICON_COLOR",
+    )
+
+
+def _get_emergency_prefix() -> str:
+    """Préfixe des messages d'alerte (EMERGENCY_PREFIX, défaut ``"EMERG "``).
+
+    La valeur est utilisée telle quelle (l'espace final sépare le préfixe du
+    reste du message). Une valeur vide ou composée d'espaces désactive le
+    préfixe ; le témoin visuel reste alors l'icône rouge.
+    """
+    raw = os.environ.get("EMERGENCY_PREFIX")
+    if raw is None:
+        return DEFAULT_EMERGENCY_PREFIX
+    return raw if raw.strip() else ""
+
+
+def _emergency_prefix(plane_info: dict | None) -> str:
+    """Préfixe d'alerte à appliquer à un avion, "" s'il n'est pas en détresse."""
+    if not plane_info or not flights.is_emergency_squawk(plane_info.get("squawk")):
+        return ""
+    return _get_emergency_prefix()
 
 
 def _get_bearing() -> float:
@@ -243,6 +294,10 @@ def _format_value(key: str, plane_info: dict) -> str:
             return ""
     if key == "direction":
         return direction_from_track(plane_info.get("track")) or ""
+    if key == "squawk":
+        return str(plane_info.get("squawk") or "").strip()
+    if key == "emergency":
+        return flights.squawk_label(plane_info.get("squawk")) or ""
     return ""
 
 
@@ -275,7 +330,11 @@ def build_aircraft_message(plane_info: dict | None, template: str | None = None)
     # " m"/" ft"/" km/h" détachés par une espace (ex. "{altitude_m}m" sans
     # altitude -> " m" seul). Les valeurs collées ("10500m") sont conservées.
     message = re.sub(r"\s+(?:m|ft|km/h)(?=\s|$)", "", message)
-    return message or None
+    if not message:
+        return None
+    # Avion en détresse (squawk 7500/7600/7700) : préfixe d'alerte bien
+    # visible devant le message (EMERGENCY_PREFIX).
+    return f"{_emergency_prefix(plane_info)}{message}"
 
 
 # --- Couleurs du texte multicolore ----------------------------------------
@@ -301,6 +360,8 @@ _FIELD_COLOR_DEFAULTS: dict[str, str] = {
     "distance_km": "#FFFFFF",
     "track": "#FFFFFF",
     "direction": "#FFFFFF",
+    "squawk": "#FFFFFF",
+    "emergency": EMERGENCY_TEXT_COLOR,
 }
 
 
@@ -429,7 +490,13 @@ def build_colored_segments(
                 result.append({"t": new_text, "c": seg["c"]})
         merged = result
 
-    return merged or None
+    if not merged:
+        return None
+    # Avion en détresse : segment d'alerte rouge en tête du message.
+    prefix = _emergency_prefix(plane_info)
+    if prefix:
+        merged.insert(0, {"t": prefix, "c": EMERGENCY_TEXT_COLOR})
+    return merged
 
 
 def _rotate_sprite(sprite: list[int], angle_deg: float) -> list[tuple[int, int]]:
@@ -478,7 +545,12 @@ def build_draw_commands(plane_info: dict | None) -> list[dict]:
         return []
     bearing = _get_bearing()
     angle = (track_f - bearing) % 360.0
-    color = _get_icon_color()
+    # Avion en détresse (squawk 7500/7600/7700) : icône rouge par défaut
+    # (EMERGENCY_ICON_COLOR) pour le distinguer au premier coup d'œil.
+    if flights.is_emergency_squawk(plane_info.get("squawk")):
+        color = _get_emergency_icon_color()
+    else:
+        color = _get_icon_color()
     pixels = set(_rotate_sprite(AIRCRAFT_SPRITE, angle))
 
     colors: list[int] = []

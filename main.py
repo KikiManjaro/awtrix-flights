@@ -31,6 +31,10 @@ Comportement :
     - Interrogation immédiate au démarrage, puis toutes les POLL_INTERVAL_SEC.
     - Chaque avion détecté est affiché une fois ; le même callsign n'est pas
       réaffiché avant NOTIFY_COOLDOWN_SEC.
+    - Un avion en détresse (squawk 7500 détournement / 7600 panne radio /
+      7700 urgence) est toujours affiché : il ignore le cooldown anti-spam
+      ET la limite MAX_NOTIFY_PER_CYCLE (alerte prioritaire, journalisée en
+      WARNING, préfixe et icône rouge via awtrix_client).
     - Aucun message d'effacement n'est envoyé quand le ciel est vide :
       l'affichage reste tranquille.
     - Ctrl-C ou SIGTERM -> arrêt propre (code 0).
@@ -256,6 +260,8 @@ def run_once(
         return 0
 
     sent = 0
+    sent_emergency = 0
+    sent_normal = 0
     skipped_no_callsign = 0
     skipped_cooldown = 0
     skipped_limit = 0
@@ -267,7 +273,18 @@ def run_once(
             skipped_no_callsign += 1
             logger.debug("Avion sans callsign ignoré : %s", plane.get("country"))
             continue
-        if not tracker.due(callsign, now):
+        # Avion en détresse (squawk 7500/7600/7700) : priorité absolue, il
+        # court-circuite le cooldown anti-spam et la limite par cycle.
+        emergency_label = flights.squawk_label(plane.get("squawk"))
+        emergency = emergency_label is not None
+        if emergency:
+            logger.warning(
+                "SQUAWK D'URGENCE : %s %s (squawk %s) - affichage prioritaire, cooldown ignoré.",
+                callsign,
+                emergency_label,
+                plane.get("squawk"),
+            )
+        elif not tracker.due(callsign, now):
             skipped_cooldown += 1
             logger.debug(
                 "Callsign %s déjà affiché récemment (cooldown %ss), ignoré ce cycle.",
@@ -275,7 +292,7 @@ def run_once(
                 int(tracker.remaining(callsign, now)),
             )
             continue
-        if sent >= MAX_NOTIFY_PER_CYCLE:
+        if not emergency and sent_normal >= MAX_NOTIFY_PER_CYCLE:
             skipped_limit += 1
             # Marquer le cooldown pour ne pas le revoir au cycle suivant
             tracker.mark(callsign, now)
@@ -285,6 +302,10 @@ def run_once(
             print(f"[dry-run] would notify {callsign}: {json.dumps(payload, ensure_ascii=False)}")
             tracker.mark(callsign, now)
             sent += 1
+            if emergency:
+                sent_emergency += 1
+            else:
+                sent_normal += 1
             continue
         ok = notify(plane)
         tracker.mark(callsign, now)
@@ -292,6 +313,10 @@ def run_once(
             time.sleep(SEND_DELAY_S)
         if ok:
             sent += 1
+            if emergency:
+                sent_emergency += 1
+            else:
+                sent_normal += 1
             speed_ms = plane.get("speed_ms")
             if speed_ms is not None:
                 try:
@@ -318,6 +343,7 @@ def run_once(
                     **plane,
                     "speed_kmh": speed_kmh,
                     "notified_at": int(time.time()),
+                    "emergency": emergency,
                 },
             )
         else:
@@ -328,9 +354,11 @@ def run_once(
             )
 
     logger.info(
-        "%d avion(s) dans la zone : %d affiché(s), %d ignoré(s) (cooldown), %d ignoré(s) (limite %d), %d sans callsign.",
+        "%d avion(s) dans la zone : %d affiché(s) (dont %d en urgence), "
+        "%d ignoré(s) (cooldown), %d ignoré(s) (limite %d), %d sans callsign.",
         len(aircraft),
         sent,
+        sent_emergency,
         skipped_cooldown,
         skipped_limit,
         MAX_NOTIFY_PER_CYCLE,

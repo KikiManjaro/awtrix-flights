@@ -4,6 +4,10 @@
 Retourne la liste des avions actuellement présents au-dessus de la maison,
 filtrés par distance horizontale (formule de Haversine) et altitude minimale.
 
+Chaque avion porte son code transpondeur (``squawk``) : les codes d'urgence
+7500 (détournement), 7600 (panne radio) et 7700 (urgence) sont reconnus par
+``is_emergency_squawk()`` / ``squawk_label()``.
+
 Configuration (variables d'environnement) :
     HOME_LAT   : latitude de la maison en degrés décimaux (obligatoire)
     HOME_LON   : longitude de la maison en degrés décimaux (obligatoire)
@@ -48,7 +52,18 @@ _IDX_ON_GROUND = 8
 _IDX_VELOCITY = 9
 _IDX_TRUE_TRACK = 10
 _IDX_GEO_ALT = 13
+_IDX_SQUAWK = 14
 _IDX_CATEGORY = 17
+
+# Codes transpondeur d'urgence : 7500 = détournement (hijack), 7600 = panne
+# radio, 7700 = urgence générale. Un avion qui les émet signale une situation
+# anormale aux contrôleurs ; le service les met en avant (affichage forcé).
+EMERGENCY_SQUAWK_LABELS = {
+    "7500": "HIJACK",
+    "7600": "RADIO FAIL",
+    "7700": "EMERGENCY",
+}
+EMERGENCY_SQUAWKS = frozenset(EMERGENCY_SQUAWK_LABELS)
 
 # Libellés des catégories OpenSky (champ "category", index 17).
 CATEGORY_NAMES = {
@@ -80,6 +95,37 @@ def category_name(category):
     if category is None:
         return None
     return CATEGORY_NAMES.get(int(category))
+
+
+def normalize_squawk(value):
+    """Code transpondeur sur 4 chiffres, ou None si absent/inexploitable.
+
+    L'API OpenSky renvoie le squawk sous forme de chaîne (``"7500"``), ou
+    ``None`` quand l'avion ne le transmet pas. Toute valeur qui n'est pas
+    exactement 4 chiffres est ignorée (pas d'alerte sur une donnée douteuse).
+    """
+    if value is None:
+        return None
+    code = str(value).strip()
+    if len(code) != 4 or not code.isdigit():
+        return None
+    return code
+
+
+def squawk_label(squawk):
+    """Libellé d'urgence d'un squawk, ou None si le code est normal.
+
+    Exemples : ``"7500"`` -> ``"HIJACK"``, ``"1000"`` -> None.
+    """
+    code = normalize_squawk(squawk)
+    if code is None:
+        return None
+    return EMERGENCY_SQUAWK_LABELS.get(code)
+
+
+def is_emergency_squawk(squawk):
+    """Vrai si le code transpondeur est un code d'urgence (7500/7600/7700)."""
+    return squawk_label(squawk) is not None
 
 
 class OpenSkyError(Exception):
@@ -167,6 +213,7 @@ def filter_aircraft(states, home_lat, home_lon, radius_km, min_alt_m):
                 "last_contact": _field(state, _IDX_LAST_CONTACT),
                 "track": _field(state, _IDX_TRUE_TRACK),
                 "category": _field(state, _IDX_CATEGORY),
+                "squawk": normalize_squawk(_field(state, _IDX_SQUAWK)),
             }
         )
     aircraft.sort(key=lambda a: a["distance_km"])
