@@ -4,9 +4,11 @@
 Starts a tiny HTTP server on port 8080 that responds to GET /health
 with 200 OK. Useful for Docker HEALTHCHECK and monitoring.
 """
+
 import http.server
 import json
 import sys
+
 
 class HealthHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -21,6 +23,7 @@ class HealthHandler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         pass  # suppress request logs
+
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
