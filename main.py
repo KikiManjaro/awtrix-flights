@@ -256,6 +256,7 @@ def run_once(
         return 0
 
     sent = 0
+    attempts = 0
     skipped_no_callsign = 0
     skipped_cooldown = 0
     skipped_limit = 0
@@ -286,10 +287,16 @@ def run_once(
             tracker.mark(callsign, now)
             sent += 1
             continue
+        if attempts > 0:
+            # Espacer les envois au sein d'un même cycle : l'ESP32 doit avoir
+            # terminé de traiter le payload précédent (parsing JSON + rendu
+            # draw) avant de recevoir le suivant. Le délai s'applique AVANT
+            # chaque envoi à partir du second (firmware 0.98 : deux payloads
+            # draw dos à dos font redémarrer l'écran).
+            time.sleep(SEND_DELAY_S)
+        attempts += 1
         ok = notify(plane)
         tracker.mark(callsign, now)
-        if sent > 0:
-            time.sleep(SEND_DELAY_S)
         if ok:
             sent += 1
             speed_ms = plane.get("speed_ms")

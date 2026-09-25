@@ -172,6 +172,59 @@ class RunOnceTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             main.run_once(self.tracker, get_aircraft=bad_config, notify=mock.Mock(), now=1000.0)
 
+    def test_send_delay_spaces_out_every_awtrix_send(self):
+        """SEND_DELAY_S doit séparer TOUS les envois du cycle, pas seulement
+        ceux à partir du 3e.
+
+        Firmware 0.98 : deux payloads ``draw`` reçus dos à dos font
+        redémarrer l'ESP32. L'intervalle entre le 1er et le 2e envoi doit
+        donc lui aussi être espacé.
+        """
+        events = []
+
+        def notify(plane):
+            events.append(("notify", plane["callsign"]))
+            return True
+
+        def fake_sleep(seconds):
+            events.append(("sleep", seconds))
+
+        planes = [
+            _plane(callsign="AFR123"),
+            _plane(callsign="DLH456"),
+            _plane(callsign="BAW222"),
+        ]
+        with mock.patch("main.time.sleep", side_effect=fake_sleep):
+            sent = main.run_once(self.tracker, lambda: planes, notify, now=1000.0)
+
+        self.assertEqual(sent, 3)
+        self.assertEqual(
+            events,
+            [
+                ("notify", "AFR123"),
+                ("sleep", main.SEND_DELAY_S),
+                ("notify", "DLH456"),
+                ("sleep", main.SEND_DELAY_S),
+                ("notify", "BAW222"),
+            ],
+        )
+
+    def test_no_send_delay_for_a_single_aircraft(self):
+        notify = mock.Mock(return_value=True)
+        with mock.patch("main.time.sleep") as sleep:
+            sent = main.run_once(self.tracker, lambda: [_plane()], notify, now=1000.0)
+        self.assertEqual(sent, 1)
+        sleep.assert_not_called()
+
+    def test_dry_run_never_notifies_nor_sleeps(self):
+        notify = mock.Mock(return_value=True)
+        planes = [_plane(callsign="AFR123"), _plane(callsign="DLH456")]
+        with mock.patch("main.time.sleep") as sleep:
+            sent = main.run_once(self.tracker, lambda: planes, notify, now=1000.0, dry_run=True)
+        self.assertEqual(sent, 2)
+        notify.assert_not_called()
+        sleep.assert_not_called()
+
 
 class MainConfigTest(unittest.TestCase):
     def test_missing_home_coords_exits_2(self):
