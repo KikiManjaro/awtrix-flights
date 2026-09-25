@@ -132,11 +132,27 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="awtrix-flights",
         description="Affiche les avions au-dessus de la maison sur AWTRIX 3 (OpenSky Network).",
     )
-    p.add_argument("--dry-run", action="store_true", help="n'envoie rien, affiche ce qui serait envoyé et quitte")
-    p.add_argument("--once", action="store_true", help="exécute un seul cycle de polling puis s'arrête")
-    p.add_argument("--validate-config", action="store_true", help="valide HOME_LAT/HOME_LON et les intervalles puis quitte (0 ok, 2 erreur)")
-    p.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="niveau de log pour ce lancement")
-    p.add_argument("--json-logs", action="store_true", help="logs au format JSON (une ligne par événement)")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="n'envoie rien, affiche ce qui serait envoyé et quitte",
+    )
+    p.add_argument(
+        "--once", action="store_true", help="exécute un seul cycle de polling puis s'arrête"
+    )
+    p.add_argument(
+        "--validate-config",
+        action="store_true",
+        help="valide HOME_LAT/HOME_LON et les intervalles puis quitte (0 ok, 2 erreur)",
+    )
+    p.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="niveau de log pour ce lancement",
+    )
+    p.add_argument(
+        "--json-logs", action="store_true", help="logs au format JSON (une ligne par événement)"
+    )
     return p
 
 
@@ -356,7 +372,13 @@ def _parse_float_env(name: str, default: float, minimum: float) -> float:
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv if argv is not None else [])
-    env_dry_run = os.environ.get("DRY_RUN", "").strip().lower() not in ("", "false", "0", "no", "off")
+    env_dry_run = os.environ.get("DRY_RUN", "").strip().lower() not in (
+        "",
+        "false",
+        "0",
+        "no",
+        "off",
+    )
     dry_run = args.dry_run or env_dry_run
     _setup_logging(cli_level=args.log_level, json_logs=args.json_logs or None)
     if args.validate_config:
@@ -432,7 +454,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             n = run_once(tracker, dry_run=dry_run)
             if dry_run:
-                print(f"[dry-run] cycle terminé : {n} notification(s) aurait(aient) été envoyée(s)")
+                print(
+                    f"[dry-run] cycle terminé : {n} notification(s) aurait(aient) été envoyée(s)"
+                )
             return 0
         except ValueError as exc:
             logger.error("Configuration invalide : %s", exc)
