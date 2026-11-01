@@ -23,6 +23,7 @@ Chaque avion détecté dans le rayon configuré est affiché avec son callsign, 
 - **Catégorie d'avion** : libellé OpenSky (gros porteur, hélicoptère, drone...)
 - **MQTT** : publie les détections sur votre broker (Mosquitto, EMQX...) pour intégration domotique
 - **Anti-spam** : chaque avion n'est affiché qu'une fois par fenêtre de cooldown (60 s par défaut)
+- **Mode nuit** : plus aucun envoi entre `NIGHT_START` et `NIGHT_END` (ex. `23:00` → `07:00`, passage de minuit géré, fuseau `TZ`) pendant que l'interrogation d'OpenSky continue — l'écran reste éteint dans la chambre
 - **Multi-écrans** : publie sur plusieurs AWTRIX simultanément (séparés par des virgules)
 - **Zéro dépendance** : uniquement la bibliothèque standard Python (pas de pip install)
 - **Robuste** : backoff sur 429/erreurs réseau, ne plante jamais sur un pic réseau
@@ -59,6 +60,39 @@ docker run -d \
 | `MIN_ALT_M` | Altitude minimale des avions pris en compte | `300` |
 | `POLL_INTERVAL_SEC` | Période d'interrogation d'OpenSky | `15` |
 | `NOTIFY_COOLDOWN_SEC` | Anti-spam : délai min. entre 2 affichages du même avion | `60` |
+
+### 🌙 Mode nuit (`NIGHT_START` / `NIGHT_END`)
+
+Le boîtier est généralement **dans une chambre** : une matrice 8×32 qui s'allume à 3 h du matin parce qu'un vol de nuit a traversé la zone, c'est non. Le mode nuit coupe tout envoi pendant une plage horaire configurable.
+
+| Variable | Rôle | Défaut |
+|---|---|---|
+| `NIGHT_START` | Début de la plage silencieuse, `HH:MM` (heure locale) | — (désactivé) |
+| `NIGHT_END` | Fin de la plage silencieuse, `HH:MM` (heure locale) | — (désactivé) |
+| `TZ` | Fuseau utilisé pour évaluer la plage | fuseau local du système (image Docker : `Europe/Paris`) |
+
+Comportement :
+
+- Les deux valeurs vides (ou identiques) → **mode nuit désactivé**. Une seule des deux définie → erreur au démarrage (`--validate-config` le signale aussi).
+- La plage peut traverser minuit : `23:00` → `07:00` est géré correctement. `NIGHT_START` est **inclus**, `NIGHT_END` **exclu** — à 07:00 pile l'affichage reprend.
+- Les heures sont lues dans le fuseau `TZ` (changement d'heure compris), jamais en UTC.
+- Pendant la plage : **aucun envoi vers l'AWTRIX, aucune publication MQTT**, mais `flights.get_aircraft_overhead()` continue d'être appelé toutes les `POLL_INTERVAL_SEC` — le cycle de polling, son retry/backoff et l'état anti-spam restent vivants, donc pas de rafale de notifications périmées à la sortie de la plage.
+- Une seule ligne de log par cycle (jamais une par avion) :
+
+```text
+2026-01-15 23:30:12 INFO main: MODE NUIT (23:00 -> 07:00, CET) : 3 avion(s) dans la zone, aucun envoi AWTRIX/MQTT, interrogation OpenSky maintenue.
+```
+
+Exemple :
+
+```bash
+# Silencieux de 23 h à 7 h, heure de Paris
+NIGHT_START=23:00
+NIGHT_END=07:00
+TZ=Europe/Paris
+```
+
+Le test de la plage est isolé dans `main.in_night_window(now, start, end)` — une **fonction pure** (aucune horloge lue, aucun accès à l'environnement), testée sur le passage de minuit, les bornes, les valeurs vides ou mal formées et la conversion de fuseau (`tests/test_night_mode.py`). Une valeur mal formée n'éteint jamais l'écran si elle atteint la boucle, et échoue bruyamment au démarrage / dans `--validate-config`.
 
 ### AWTRIX
 
@@ -250,12 +284,12 @@ Tags d'image publiés sur `ghcr.io/kikimanjaro/awtrix-flights` :
 
 ```
 awtrix-flights/
-├── main.py            # boucle principale (poll, cooldown, signaux, MQTT)
+├── main.py            # boucle principale (poll, cooldown, mode nuit, signaux, MQTT)
 ├── flights.py         # client OpenSky Network (bbox, filtrage, retry, catégories)
 ├── airlines.py        # résolution compagnie depuis le préfixe callsign
 ├── awtrix_client.py   # client API AWTRIX (template, icône orientée, multi-écrans)
 ├── mqtt_client.py     # client MQTT publish-only (stdlib, zéro dépendance)
-├── tests/             # 111 tests unitaires (unittest, réseau 100% mocké)
+├── tests/             # 163 tests unitaires (unittest, réseau 100% mocké)
 ├── Dockerfile         # image ~50 Mo, non-root
 ├── docker-compose.yml # déploiement en une commande
 └── .github/workflows/ # CI + publication GHCR + releases
