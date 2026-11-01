@@ -20,6 +20,15 @@ Configuration (variables d'environnement) :
     LOG_LEVEL           niveau de log : DEBUG/INFO/WARNING/ERROR (défaut INFO)
     LOG_FORMAT          format de log : text (défaut) ou json
     DRY_RUN             si true, n'envoie rien (équivalent --dry-run)
+    NIGHT_START         début du mode nuit au format HH:MM (ex. 23:00).
+    NIGHT_END           fin du mode nuit au format HH:MM (ex. 07:00).
+                        Les deux doivent être définies ensemble ; laissées
+                        vides ou égales -> mode nuit désactivé. La plage est
+                        évaluée dans le fuseau de la variable TZ (défaut :
+                        fuseau local du système), et gère le passage de
+                        minuit (23:00 -> 07:00).
+    TZ                  fuseau horaire utilisé pour le mode nuit et les logs
+                        (ex. Europe/Paris ; tzdata requis dans l'image Docker)
 
 CLI :
     --dry-run           n'envoie rien à l'AWTRIX, affiche ce qui serait envoyé
@@ -33,6 +42,9 @@ Comportement :
       réaffiché avant NOTIFY_COOLDOWN_SEC.
     - Aucun message d'effacement n'est envoyé quand le ciel est vide :
       l'affichage reste tranquille.
+    - Mode nuit : pendant la plage NIGHT_START -> NIGHT_END, plus aucun envoi
+      vers l'AWTRIX ni publication MQTT, mais OpenSky continue d'être
+      interrogé (le cycle de polling et son backoff restent vivants).
     - Ctrl-C ou SIGTERM -> arrêt propre (code 0).
 
 Dépendances : uniquement la bibliothèque standard.
@@ -47,6 +59,9 @@ import os
 import signal
 import sys
 import time
+from datetime import datetime, timezone, tzinfo
+from datetime import time as dt_time
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import awtrix_client
 import flights
@@ -125,6 +140,120 @@ def _setup_logging(cli_level: str | None = None, json_logs: bool | None = None) 
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level)
+
+
+# ---------------------------------------------------------------------------
+# Mode nuit : silence de l'écran pendant une plage horaire (le boîtier est
+# souvent dans une chambre, et une LED qui s'allume à 3 h du matin réveille).
+# ---------------------------------------------------------------------------
+
+# Fuseaux déjà signalés comme inconnus : évite de répéter l'avertissement à
+# chaque cycle de polling (toutes les POLL_INTERVAL_SEC).
+_TZ_WARNED: set[str] = set()
+
+
+def _parse_hhmm(raw: str) -> dt_time:
+    """Convertit une heure ``HH:MM`` en ``datetime.time`` (ValueError sinon)."""
+    value = (raw or "").strip()
+    try:
+        return datetime.strptime(value, "%H:%M").time()  # noqa: DTZ007 - heure murale voulue
+    except ValueError:
+        raise ValueError(
+            f"heure invalide {raw!r} (format attendu HH:MM, par exemple 23:00)"
+        ) from None
+
+
+def in_night_window(now: datetime, start: str, end: str) -> bool:
+    """True si ``now`` tombe dans la plage nuit ``start`` -> ``end``.
+
+    Fonction pure (aucun accès à l'environnement, aucune horloge lue) : le
+    fuseau vient de ``now`` lui-même, donc c'est l'appelant qui décide de la
+    référence temporelle (voir ``_local_datetime``, qui applique ``TZ``).
+
+    Règles :
+        - ``start`` ou ``end`` vide -> désactivé (False).
+        - ``start == end`` -> désactivé (False) : une plage de durée nulle
+          n'aurait aucun sens et couperait l'écran 24 h/24.
+        - heure illisible (``"25:00"``, ``"abc"``, ``"0700"``) -> False :
+          une configuration cassée ne doit pas rendre l'écran muet.
+        - plage normale (``start < end``) : ``start <= now < end``.
+        - passage de minuit (``start > end``, ex. 23:00 -> 07:00) :
+          ``now >= start`` ou ``now < end``.
+        - borne de début incluse, borne de fin exclue : à 07:00 pile on
+          réaffiche, à 23:00 pile on se tait.
+    """
+    try:
+        start_t = _parse_hhmm(start)
+        end_t = _parse_hhmm(end)
+    except ValueError:
+        return False
+    if start_t == end_t:
+        return False
+    # ``now.time()`` conserve le tzinfo : le retirer garde l'heure murale du
+    # fuseau de ``now`` et permet la comparaison avec les bornes naïves.
+    current = now.time().replace(tzinfo=None)
+    if start_t < end_t:
+        return start_t <= current < end_t
+    return current >= start_t or current < end_t
+
+
+def _resolve_tz() -> tzinfo:
+    """Fuseau à utiliser pour le mode nuit : variable ``TZ``, sinon système."""
+    name = os.environ.get("TZ", "").strip()
+    system_tz = datetime.now().astimezone().tzinfo or timezone.utc
+    if not name:
+        return system_tz
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        if name not in _TZ_WARNED:
+            _TZ_WARNED.add(name)
+            logger.warning(
+                "TZ=%r inconnu (tzdata absent ?) : fuseau local du système utilisé "
+                "pour le mode nuit.",
+                name,
+            )
+        return system_tz
+
+
+def _local_datetime(timestamp: float) -> datetime:
+    """Convertit un timestamp epoch en datetime conscient dans le fuseau TZ."""
+    return datetime.fromtimestamp(timestamp, tz=_resolve_tz())
+
+
+def _night_config() -> tuple[str, str]:
+    """Lit NIGHT_START / NIGHT_END (chaînes brutes, vides si non définies)."""
+    return (
+        os.environ.get("NIGHT_START", "").strip(),
+        os.environ.get("NIGHT_END", "").strip(),
+    )
+
+
+def _validate_night_config() -> tuple[str, str]:
+    """Valide la plage nuit et renvoie ``(start, end)`` ; ValueError sinon.
+
+    Les deux bornes vont ensemble : une seule définie est une erreur de
+    configuration (on ne devine pas la borne manquante).
+    """
+    start, end = _night_config()
+    if not start and not end:
+        return start, end
+    if not start or not end:
+        raise ValueError("NIGHT_START et NIGHT_END doivent être définies ensemble (ou vides).")
+    for name, value in (("NIGHT_START", start), ("NIGHT_END", end)):
+        try:
+            _parse_hhmm(value)
+        except ValueError:
+            raise ValueError(f"{name} doit être au format HH:MM (reçu {value!r}).") from None
+    return start, end
+
+
+def _night_mode_label() -> str:
+    """Libellé de la plage nuit pour les logs, vide si le mode est désactivé."""
+    start, end = _night_config()
+    if not start or not end or start == end:
+        return ""
+    return f"{start} -> {end}"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -233,6 +362,8 @@ def run_once(
       (le service ne doit jamais mourir sur un pic de réseau).
     - Si ``dry_run`` est True, n'appelle jamais ``notify`` : affiche le
       payload qui serait envoyé et compte comme ``sent``.
+    - En mode nuit (NIGHT_START -> NIGHT_END), OpenSky est quand même
+      interrogé mais rien n'est envoyé ni publié : un seul log par cycle.
     """
     if get_aircraft is None:
         get_aircraft = flights.get_aircraft_overhead
@@ -246,6 +377,22 @@ def run_once(
         raise  # erreur de configuration -> arrêt immédiat dans main()
     except Exception as exc:  # noqa: BLE001 - filet de sécurité du service
         logger.exception("Erreur inattendue pendant l'interrogation : %s", exc)
+        return 0
+
+    # Mode nuit : on garde le cycle de polling (état anti-spam, backoff,
+    # détection) mais on ne touche ni à l'écran ni au broker. Le log est
+    # unique par cycle, jamais par avion : pas de spam pendant 8 heures.
+    now_dt = _local_datetime(now)
+    night_start, night_end = _night_config()
+    if in_night_window(now_dt, night_start, night_end):
+        logger.info(
+            "MODE NUIT (%s -> %s, %s) : %d avion(s) dans la zone, aucun envoi AWTRIX/MQTT, "
+            "interrogation OpenSky maintenue.",
+            night_start,
+            night_end,
+            now_dt.tzname() or now_dt.tzinfo,
+            len(aircraft),
+        )
         return 0
 
     if not aircraft:
@@ -362,6 +509,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.validate_config:
         try:
             _validate_base_config()
+            _validate_night_config()
             lat = float(os.environ.get("HOME_LAT", ""))
             lon = float(os.environ.get("HOME_LON", ""))
             if not -90 <= lat <= 90:
@@ -387,6 +535,7 @@ def main(argv: list[str] | None = None) -> int:
         notify_cooldown = _parse_float_env(
             "NOTIFY_COOLDOWN_SEC", DEFAULT_NOTIFY_COOLDOWN_S, MIN_NOTIFY_COOLDOWN_S
         )
+        _validate_night_config()
     except ValueError as exc:
         logger.error("Configuration invalide : %s", exc)
         return 2
@@ -402,9 +551,10 @@ def main(argv: list[str] | None = None) -> int:
         mode_label = " [dry-run]"
     elif args.once:
         mode_label = " [once]"
+    night_label = _night_mode_label()
     logger.info(
         "Surveillance des avions démarrée%s : lat=%s lon=%s "
-        "rayon=%s alt_min=%s, poll=%ss, cooldown=%ss, AWTRIX=%s",
+        "rayon=%s alt_min=%s, poll=%ss, cooldown=%ss, AWTRIX=%s, mode nuit=%s",
         mode_label,
         os.environ.get("HOME_LAT"),
         os.environ.get("HOME_LON"),
@@ -413,6 +563,9 @@ def main(argv: list[str] | None = None) -> int:
         int(poll_interval),
         int(notify_cooldown),
         awtrix_host,
+        f"{night_label} ({os.environ.get('TZ', '').strip() or 'fuseau système'})"
+        if night_label
+        else "désactivé",
     )
 
     if not dry_run:

@@ -21,6 +21,7 @@ Every aircraft detected within the configured radius is shown with its callsign,
 - **Aircraft category**: OpenSky label (heavy, helicopter, drone...)
 - **MQTT**: publishes detections to your broker (Mosquitto, EMQX...) for home-automation integration
 - **Anti-spam**: each aircraft is shown at most once per cooldown window (60 s default)
+- **Night mode**: no send at all between `NIGHT_START` and `NIGHT_END` (e.g. `23:00` → `07:00`, midnight crossing handled, `TZ` timezone) while OpenSky polling continues — the display stays dark in the bedroom
 - **Multi-display**: publishes to several AWTRIX units at once (comma-separated hosts)
 - **Zero dependencies**: Python standard library only (no pip install)
 - **Resilient**: backoff on 429/network errors, never crashes on a network spike
@@ -57,6 +58,39 @@ docker run -d \
 | `MIN_ALT_M` | Minimum aircraft altitude | `300` |
 | `POLL_INTERVAL_SEC` | OpenSky polling interval | `15` |
 | `NOTIFY_COOLDOWN_SEC` | Anti-spam: min. delay between displays of the same aircraft | `60` |
+
+### 🌙 Night mode (`NIGHT_START` / `NIGHT_END`)
+
+The box usually sits **in a bedroom**: an 8×32 LED matrix lighting up at 3 a.m. because a night flight crossed the zone is not acceptable. Night mode silences every outgoing message during a configurable time window.
+
+| Variable | Role | Default |
+|---|---|---|
+| `NIGHT_START` | Start of the silent window, `HH:MM` (local time) | — (disabled) |
+| `NIGHT_END` | End of the silent window, `HH:MM` (local time) | — (disabled) |
+| `TZ` | Timezone used to evaluate the window | system local (Docker image: `Europe/Paris`) |
+
+Behaviour:
+
+- Both values empty (or identical) → **night mode disabled**. Only one of the two set → startup error (`--validate-config` reports it as well).
+- The window may cross midnight: `23:00` → `07:00` is handled correctly. `NIGHT_START` is inclusive, `NIGHT_END` exclusive — at 07:00 sharp the display resumes.
+- Times are read in the `TZ` timezone (DST included), never in UTC.
+- During the window: **nothing is sent to the AWTRIX and nothing is published to MQTT**, but `flights.get_aircraft_overhead()` keeps being called every `POLL_INTERVAL_SEC` — the polling cycle, its retry/backoff and the anti-spam bookkeeping stay alive, so there is no burst of stale notifications when the window ends.
+- A single log line per cycle (never one per aircraft):
+
+```text
+2026-01-15 23:30:12 INFO main: MODE NUIT (23:00 -> 07:00, CET) : 3 avion(s) dans la zone, aucun envoi AWTRIX/MQTT, interrogation OpenSky maintenue.
+```
+
+Example:
+
+```bash
+# Silent from 11 p.m. to 7 a.m., Paris time
+NIGHT_START=23:00
+NIGHT_END=07:00
+TZ=Europe/Paris
+```
+
+The check lives in `main.in_night_window(now, start, end)` — a **pure function** (no clock read, no environment access) unit-tested for midnight crossing, boundaries, empty/malformed values and timezone conversion (`tests/test_night_mode.py`). A malformed value fails open (display stays on) if it ever reaches the loop, and fails loudly at startup / `--validate-config`.
 
 ### AWTRIX
 
@@ -248,12 +282,12 @@ Image tags on `ghcr.io/kikimanjaro/awtrix-flights`:
 
 ```
 awtrix-flights/
-├── main.py            # main loop (poll, cooldown, signals, MQTT)
+├── main.py            # main loop (poll, cooldown, night mode, signals, MQTT)
 ├── flights.py         # OpenSky Network client (bbox, filtering, retry, categories)
 ├── airlines.py        # airline resolution from callsign prefix
 ├── awtrix_client.py   # AWTRIX API client (template, oriented icon, multi-display)
 ├── mqtt_client.py     # publish-only MQTT client (stdlib, zero dependency)
-├── tests/             # 111 unit tests (unittest, network 100% mocked)
+├── tests/             # 163 unit tests (unittest, network 100% mocked)
 ├── Dockerfile         # ~50 MB image, non-root
 ├── docker-compose.yml # one-command deployment
 └── .github/workflows/ # CI + GHCR publishing + releases
