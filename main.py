@@ -41,9 +41,11 @@ Dépendances : uniquement la bibliothèque standard.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import os
+import pathlib
 import signal
 import sys
 import time
@@ -72,6 +74,9 @@ SEND_DELAY_S = 0.5
 # Durée de rétention des entrées du tracker (nettoyage mémoire) : un avion
 # revu au-delà de cette fenêtre est considéré comme une nouvelle visite.
 TRACKER_RETENTION_S = 10 * 60.0
+
+# Fichier heartbeat pour le HEALTHCHECK Docker (mis à jour à chaque cycle).
+HEARTBEAT_FILE = os.environ.get("HEARTBEAT_FILE", "/tmp/awtrix-flights.heartbeat")
 
 _LOG_LEVELS = {
     "DEBUG": logging.DEBUG,
@@ -138,6 +143,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="niveau de log pour ce lancement")
     p.add_argument("--json-logs", action="store_true", help="logs au format JSON (une ligne par événement)")
     return p
+
+
+def _touch_heartbeat() -> None:
+    """Met à jour le fichier heartbeat (best effort, jamais bloquant)."""
+    with contextlib.suppress(OSError):
+        pathlib.Path(HEARTBEAT_FILE).touch(exist_ok=True)
 
 
 class CooldownTracker:
@@ -239,6 +250,7 @@ def run_once(
     if notify is None:
         notify = awtrix_client.notify_aircraft
     now = time.time() if now is None else now
+    _touch_heartbeat()
 
     try:
         aircraft = get_aircraft()
