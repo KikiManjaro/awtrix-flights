@@ -5,6 +5,8 @@ Aucun réseau : get_aircraft_overhead et notify_aircraft sont mockés.
 Lancer : python3 -m unittest test_main -v
 """
 
+import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -94,6 +96,24 @@ class RunOnceTest(unittest.TestCase):
         sent = main.run_once(self.tracker, get_aircraft=lambda: [], notify=notify, now=1000.0)
         self.assertEqual(sent, 0)
         notify.assert_not_called()
+
+    def test_cycle_touche_le_fichier_heartbeat(self):
+        """Le HEALTHCHECK Docker s'appuie sur ce fichier : chaque cycle doit le rafraîchir."""
+        with tempfile.TemporaryDirectory() as tmp:
+            chemin = os.path.join(tmp, "awtrix-flights.heartbeat")
+            with mock.patch.object(main, "HEARTBEAT_FILE", chemin):
+                main.run_once(
+                    self.tracker, get_aircraft=lambda: [], notify=mock.Mock(), now=1000.0
+                )
+            self.assertTrue(os.path.exists(chemin))
+
+    def test_heartbeat_best_effort_si_chemin_invalide(self):
+        """Un chemin non inscriptible ne doit jamais interrompre le cycle."""
+        with mock.patch.object(main, "HEARTBEAT_FILE", "/proc/introuvable/hb"):
+            sent = main.run_once(
+                self.tracker, get_aircraft=lambda: [], notify=mock.Mock(), now=1000.0
+            )
+        self.assertEqual(sent, 0)
 
     def test_aircraft_triggers_notification(self):
         notify = mock.Mock(return_value=True)
